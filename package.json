@@ -1,0 +1,71 @@
+{
+  "name": "zubin-grid",
+  "version": "0.1.0",
+  "description": "A lightweight grid state manager for React and TypeScript.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./cell": {
+      "types": "./dist/core/cell.d.ts",
+      "import": "./dist/core/cell.js"
+    },
+    "./grid": {
+      "types": "./dist/core/grid.d.ts",
+      "import": "./dist/core/grid.js"
+    },
+    "./head": {
+      "types": "./dist/core/head.d.ts",
+      "import": "./dist/core/head.js"
+    },
+    "./tail": {
+      "types": "./dist/core/tail.d.ts",
+      "import": "./dist/core/tail.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "pack:check": "npm pack --dry-run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "grid",
+    "state-manager",
+    "react",
+    "typescript",
+    "hooks"
+  ],
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "react": "^18.3.1",
+    "typescript": "^5.8.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yotamos5699/zubin-grid.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yotamos5699/zubin-grid/issues"
+  },
+  "homepage": "https://github.com/yotamos5699/zubin-grid#readme"
+}
