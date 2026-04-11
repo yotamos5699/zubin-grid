@@ -10,7 +10,7 @@ A lightweight grid state manager for React and TypeScript.
 - Typed grid API for rows, columns, heads, and tails
 - React hooks for reading and updating state
 - Row and column reordering helpers
-- Support for matrix-style input and JSON-friendly state
+- JSON-friendly initialization with typed row, column, and cell records
 
 ## Installation
 
@@ -38,31 +38,41 @@ npm run example:build
 
 ## Quick start
 
-Create a grid from a 2D array of cells:
+Create a grid from JSON-friendly row, column, and cell records:
 
 ```ts
-import { cell, grid } from 'zubin-grid'
+import { grid } from 'zubin-grid'
 
-const salesGrid = grid(
-  [
-    [cell(12), cell(9), cell(4)],
-    [cell(7), cell(15), cell(8)],
+type SalesSchema = {
+  rows: Array<{ id: string; label: string }>
+  columns: Array<{ id: string; label: string }>
+  cells: Array<{ rowId: string; columnId: string; value: number }>
+}
+
+const initialState: SalesSchema = {
+  rows: [
+    { id: 'north', label: 'North' },
+    { id: 'south', label: 'South' },
   ],
-  {
-    rowHeaders: [
-      { id: 'north', label: 'North' },
-      { id: 'south', label: 'South' },
-    ],
-    colHeaders: ['jan', 'feb', 'mar'],
-  },
-)
+  columns: [
+    { id: 'jan', label: 'January' },
+    { id: 'feb', label: 'February' },
+  ],
+  cells: [
+    { rowId: 'north', columnId: 'jan', value: 12 },
+    { rowId: 'north', columnId: 'feb', value: 9 },
+    { rowId: 'south', columnId: 'jan', value: 7 },
+    { rowId: 'south', columnId: 'feb', value: 15 },
+  ],
+}
+
+const salesGrid = grid<SalesSchema>(initialState, {
+  rowHeaders: ['id', 'rowId'],
+  colHeaders: ['id', 'columnId'],
+})
 
 console.log(salesGrid.getValue('north', 'jan'))
 // 12
-
-salesGrid.setValue('south', 'mar', 11)
-console.log(salesGrid.getValue('south', 'mar'))
-// 11
 ```
 
 ## React example
@@ -70,22 +80,47 @@ console.log(salesGrid.getValue('south', 'mar'))
 Create the grid once outside render, or memoize it if you build it inside a component.
 
 ```tsx
-import { cell, grid, useCell } from 'zubin-grid'
+import { grid, useCell } from 'zubin-grid'
 
-const budgetGrid = grid(
-  [
-    [cell(1000), cell(1200)],
-    [cell(800), cell(950)],
-  ],
+type BudgetRowId = 'marketing' | 'ops'
+type BudgetColumnId = 'planned' | 'actual'
+
+type BudgetSchema = {
+  rows: Array<{ id: BudgetRowId; label: string }>
+  columns: Array<{ id: BudgetColumnId; label: string }>
+  cells: Array<{
+    rowId: BudgetRowId
+    columnId: BudgetColumnId
+    value: number
+  }>
+}
+
+const budgetGrid = grid<BudgetSchema>(
   {
-    rowHeaders: ['marketing', 'ops'],
-    colHeaders: ['planned', 'actual'],
+    rows: [
+      { id: 'marketing', label: 'Marketing' },
+      { id: 'ops', label: 'Operations' },
+    ],
+    columns: [
+      { id: 'planned', label: 'Planned' },
+      { id: 'actual', label: 'Actual' },
+    ],
+    cells: [
+      { rowId: 'marketing', columnId: 'planned', value: 1000 },
+      { rowId: 'marketing', columnId: 'actual', value: 1200 },
+      { rowId: 'ops', columnId: 'planned', value: 800 },
+      { rowId: 'ops', columnId: 'actual', value: 950 },
+    ],
+  },
+  {
+    rowHeaders: ['id', 'rowId'],
+    colHeaders: ['id', 'columnId'],
   },
 )
 
 export function BudgetCell(props: {
-  rowId: 'marketing' | 'ops'
-  columnId: 'planned' | 'actual'
+  rowId: BudgetRowId
+  columnId: BudgetColumnId
 }) {
   const [value, setValue] = useCell(budgetGrid, props.rowId, props.columnId)
 
@@ -275,7 +310,6 @@ const persistedWithCustomAdapter = grid<SalesSchema>(initialState, {
 ### Store creators
 
 - `cell(initialValue)` - creates a reactive cell
-- `grid(cells, options)` - creates a grid from a 2D matrix
 - `grid({ rows, columns, cells }, options)` - creates a grid from JSON-friendly state
 - `grid(() => ({ rows, columns, cells }), options)` - lazily creates typed grid state
 
