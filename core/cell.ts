@@ -1,20 +1,10 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-import type { Grid, GridPosition } from "./grid.js";
-import type { GridHead } from "./head.js";
+import type { Cell, CellInitializer, Subscriber, Updater } from "./cell.types.js";
+import type { Grid, GridPosition, GridState } from "./grid.types.js";
+import type { GridHead } from "./head.types.js";
 
-export type Subscriber = () => void;
-
-type CellInitializer<TCell> = () => TCell | Promise<TCell>;
-
-export type Updater<TValue> = TValue | ((currentValue: TValue) => TValue);
-
-export interface Cell<TCell> {
-  get: () => TCell;
-  set: (newValue: TCell) => void;
-  subscribe: (callback: Subscriber) => () => void;
-  _subscribers: () => number;
-}
+export type { Cell, Subscriber, Updater } from "./cell.types.js";
 
 export function cell<TCell>(initialValue: TCell | CellInitializer<TCell>): Cell<TCell> {
   let value = typeof initialValue === "function" ? (null as TCell) : initialValue;
@@ -60,8 +50,10 @@ export function useCell<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   position: GridPosition<TColumnId, TRowId>,
 ): readonly [TCell, (newValue: TCell) => void];
 export function useCell<
@@ -70,8 +62,10 @@ export function useCell<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   rowId: TRowId,
   columnId: TColumnId,
 ): readonly [TCell, (newValue: TCell) => void];
@@ -81,8 +75,12 @@ export function useCell<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  cellOrGrid: Cell<TCell> | Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  cellOrGrid:
+    | Cell<TCell>
+    | Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   rowIdOrPosition?: TRowId | GridPosition<TColumnId, TRowId>,
   columnId?: TColumnId,
 ) {
@@ -119,8 +117,10 @@ export function useCellValue<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   position: GridPosition<TColumnId, TRowId>,
 ): TCell;
 export function useCellValue<
@@ -129,8 +129,10 @@ export function useCellValue<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   rowId: TRowId,
   columnId: TColumnId,
 ): TCell;
@@ -140,8 +142,12 @@ export function useCellValue<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  cellOrGrid: Cell<TCell> | Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  cellOrGrid:
+    | Cell<TCell>
+    | Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   rowIdOrPosition?: TRowId | GridPosition<TColumnId, TRowId>,
   columnId?: TColumnId,
 ) {
@@ -172,8 +178,12 @@ function resolveCell<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  cellOrGrid: Cell<TCell> | Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  cellOrGrid:
+    | Cell<TCell>
+    | Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   rowId?: TRowId,
   columnId?: TColumnId,
 ) {
@@ -194,8 +204,12 @@ function isGrid<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  value: Cell<TCell> | Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
-): value is Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead> {
+  value:
+    | Cell<TCell>
+    | Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
+): value is Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState> {
   return "getCell" in value;
 }

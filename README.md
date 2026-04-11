@@ -10,7 +10,7 @@ A lightweight grid state manager for React and TypeScript.
 - Typed grid API for rows, columns, heads, and tails
 - React hooks for reading and updating state
 - Row and column reordering helpers
-- Support for both matrix-style input and flat record collections
+- Support for matrix-style input and JSON-friendly state
 
 ## Installation
 
@@ -19,6 +19,22 @@ npm install zubin-grid react
 ```
 
 > `react` is a peer dependency. Hooks are designed for React 18+.
+
+## Local example app
+
+This repository also includes a small Vite + React playground under `examples/` so you can try the JSON-friendly grid API, persistence, and the demo controls locally.
+
+```bash
+npm install
+npm run example
+```
+
+Useful companion scripts:
+
+```bash
+npm run example:check
+npm run example:build
+```
 
 ## Quick start
 
@@ -149,33 +165,108 @@ export function GridToolbar() {
 }
 ```
 
-## Creating a grid from flat records
+## Creating a grid from JSON-friendly state
 
-If your data already exists as records, you can build the grid without manually creating a 2D cell array.
+If your data already exists as JSON-like records, you can create the grid from a single schema object.
 
 ```ts
 import { grid } from 'zubin-grid'
 
-const rowHeaders = [
-  { id: 'north', label: 'North' },
-  { id: 'south', label: 'South' },
-] as const
+type SalesSchema = {
+  rows: Array<{ id: string; label: string }>
+  columns: Array<{ id: string; label: string }>
+  cells: Array<{ rowId: string; columnId: string; value: number }>
+}
 
-const colHeaders = [
-  { id: 'jan', label: 'January' },
-  { id: 'feb', label: 'February' },
-] as const
+const initialState: SalesSchema = {
+  rows: [
+    { id: 'north', label: 'North' },
+    { id: 'south', label: 'South' },
+  ],
+  columns: [
+    { id: 'jan', label: 'January' },
+    { id: 'feb', label: 'February' },
+  ],
+  cells: [
+    { rowId: 'north', columnId: 'jan', value: 12 },
+    { rowId: 'north', columnId: 'feb', value: 9 },
+    { rowId: 'south', columnId: 'jan', value: 7 },
+    { rowId: 'south', columnId: 'feb', value: 15 },
+  ],
+}
 
-const records = [
-  { rowId: 'north', columnId: 'jan', value: 12 },
-  { rowId: 'north', columnId: 'feb', value: 9 },
-  { rowId: 'south', columnId: 'jan', value: 7 },
-  { rowId: 'south', columnId: 'feb', value: 15 },
-] as const
+const salesGrid = grid<SalesSchema>(initialState, {
+  rowHeaders: ['id', 'rowId'],
+  colHeaders: ['id', 'columnId'],
+})
+```
 
-const salesGrid = grid(records, {
-  rowHeaders: [rowHeaders, 'id', 'rowId'],
-  colHeaders: [colHeaders, 'id', 'columnId'],
+You can also lazily create that state with a function, which is handy when you want explicit typing during bootstrap:
+
+```ts
+const emptySalesGrid = grid<SalesSchema>(() => ({
+  rows: [],
+  columns: [],
+  cells: [],
+}), {
+  rowHeaders: ['id', 'rowId'],
+  colHeaders: ['id', 'columnId'],
+})
+```
+
+You can keep the initializer even lighter and let missing arrays default to `[]`:
+
+```ts
+const bootstrappedSalesGrid = grid<SalesSchema>({}, {
+  rowHeaders: ['id', 'rowId'],
+  colHeaders: ['id', 'columnId'],
+})
+```
+
+## Non-reactive snapshots and upserts
+
+`grid.getState()` returns a plain snapshot of the current rows, columns, and cells without subscribing React to anything.
+
+```ts
+const snapshot = salesGrid.getState()
+
+salesGrid.upsertRow({ id: 'west', label: 'West' })
+salesGrid.upsertColumn({ id: 'mar', label: 'March' })
+salesGrid.upsertCell({ rowId: 'west', columnId: 'mar', value: 21 })
+```
+
+`getValue`, `getRowHead`, and `getColumnHead` are also non-reactive getters when you only need a targeted read.
+
+## Persistence
+
+Use `persist` to cache the current grid snapshot under a storage key. A custom adapter can be provided, otherwise `zubin-grid` falls back to a default async browser storage implementation with a runtime cache.
+
+```ts
+const persistedSalesGrid = grid<SalesSchema>(initialState, {
+  rowHeaders: ['id', 'rowId'],
+  colHeaders: ['id', 'columnId'],
+  persist: ['sales-grid'],
+})
+```
+
+Custom adapters receive `get`, `set`, and `remove` methods:
+
+```ts
+const persistedWithCustomAdapter = grid<SalesSchema>(initialState, {
+  rowHeaders: ['id', 'rowId'],
+  colHeaders: ['id', 'columnId'],
+  persist: [
+    'sales-grid',
+    {
+      get: async (key) => window.myStore.get(key) ?? null,
+      set: async (key, value) => {
+        await window.myStore.set(key, value)
+      },
+      remove: async (key) => {
+        await window.myStore.remove(key)
+      },
+    },
+  ],
 })
 ```
 
@@ -184,7 +275,9 @@ const salesGrid = grid(records, {
 ### Store creators
 
 - `cell(initialValue)` - creates a reactive cell
-- `grid(cells, options)` - creates a grid from a 2D matrix or record collection
+- `grid(cells, options)` - creates a grid from a 2D matrix
+- `grid({ rows, columns, cells }, options)` - creates a grid from JSON-friendly state
+- `grid(() => ({ rows, columns, cells }), options)` - lazily creates typed grid state
 
 ### Cell hooks
 
@@ -206,6 +299,11 @@ const salesGrid = grid(records, {
 
 - `useGrid(grid)`
 - `createGridKey(rowId, columnId)`
+- `grid.getState()`
+- `grid.upsertRow(...)`
+- `grid.upsertColumn(...)`
+- `grid.upsertCell(...)`
+- `grid.upsertCells(...)`
 
 ## Imports
 

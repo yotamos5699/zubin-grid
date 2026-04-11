@@ -2,31 +2,17 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import { cell } from "./cell.js";
 
-import type { Cell, Subscriber } from "./cell.js";
-import type { Grid, GridPosition } from "./grid.js";
-import type { GridHead } from "./head.js";
+import type { Cell, Subscriber } from "./cell.types.js";
+import type { Grid, GridPosition, GridState } from "./grid.types.js";
+import type { GridHead } from "./head.types.js";
+import type {
+  GridAxisCell,
+  GridAxisTailUpdater,
+  GridTailHookValue,
+  GridTailState,
+} from "./tail.types.js";
 
-export interface GridAxisCell<TCell, TRowId extends string, TColumnId extends string> {
-  id: string;
-  rowId: TRowId;
-  columnId: TColumnId;
-  value: TCell;
-  cell: Cell<TCell>;
-}
-
-export type GridAxisTailUpdater<
-  TCell,
-  TRowId extends string,
-  TColumnId extends string,
-  TTail,
-> = (cells: readonly GridAxisCell<TCell, TRowId, TColumnId>[]) => TTail;
-
-export interface GridTailState<TTail = unknown> {
-  isReactive: boolean;
-  value: TTail | null;
-}
-
-type GridTailHookValue<TTail> = [TTail] extends [void] ? void : TTail | undefined;
+export type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./tail.types.js";
 
 export function useRowTail<
   TCell,
@@ -34,9 +20,11 @@ export function useRowTail<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
   TTail = void,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   position: GridPosition<TColumnId, TRowId>,
   onRowUpdate?: GridAxisTailUpdater<TCell, TRowId, TColumnId, TTail>,
 ): GridTailHookValue<TTail>;
@@ -46,9 +34,11 @@ export function useRowTail<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
   TTail = void,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   rowId: TRowId,
   onRowUpdate?: GridAxisTailUpdater<TCell, TRowId, TColumnId, TTail>,
 ): GridTailHookValue<TTail>;
@@ -58,9 +48,11 @@ export function useRowTail<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
   TTail = void,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   rowIdOrPosition: TRowId | GridPosition<TColumnId, TRowId>,
   onRowUpdate?: GridAxisTailUpdater<TCell, TRowId, TColumnId, TTail>,
 ): GridTailHookValue<TTail> {
@@ -93,9 +85,11 @@ export function useColumnTail<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
   TTail = void,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   position: GridPosition<TColumnId, TRowId>,
   onColumnUpdate?: GridAxisTailUpdater<TCell, TRowId, TColumnId, TTail>,
 ): GridTailHookValue<TTail>;
@@ -105,9 +99,11 @@ export function useColumnTail<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
   TTail = void,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   columnId: TColumnId,
   onColumnUpdate?: GridAxisTailUpdater<TCell, TRowId, TColumnId, TTail>,
 ): GridTailHookValue<TTail>;
@@ -117,9 +113,11 @@ export function useColumnTail<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
   TTail = void,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   columnIdOrPosition: TColumnId | GridPosition<TColumnId, TRowId>,
   onColumnUpdate?: GridAxisTailUpdater<TCell, TRowId, TColumnId, TTail>,
 ): GridTailHookValue<TTail> {

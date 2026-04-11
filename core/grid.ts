@@ -1,6 +1,32 @@
 import { cell } from "./cell.js";
+import { createGridPersistController } from "./gridPersist.js";
 
-import type { Cell, Subscriber, Updater } from "./cell.js";
+import type { Cell, Subscriber, Updater } from "./cell.types.js";
+import type {
+  Grid,
+  GridAxisIds,
+  GridInitialCellEntry,
+  GridMatrixSnapshot,
+  GridOptions,
+  GridPersistOption,
+  GridPosition,
+  GridRecord,
+  GridSchemaOptions,
+  GridState,
+  GridStateAdapter,
+  GridStateCell,
+  GridStateInitializer,
+  GridUpsertHead,
+  SchemaCell,
+  SchemaCellValue,
+  SchemaColumn,
+  SchemaColumnHead,
+  SchemaColumnId,
+  SchemaRow,
+  SchemaRowHead,
+  SchemaRowId,
+  SchemaSnapshot,
+} from "./grid.types.js";
 
 import {
   assertHeadId,
@@ -12,104 +38,41 @@ import {
 } from "./head.js";
 import { createTailCellMap, getTailCell, setTailCellResult } from "./tail.js";
 
-import type { GridHead, GridHeadId, GridHeadInput, ResolvedGridHead } from "./head.js";
-import type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./tail.js";
+import type {
+  GridHead,
+  GridHeadId,
+  GridHeadInput,
+  ResolvedGridHead,
+} from "./head.types.js";
+import type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./tail.types.js";
 
-export interface GridOptions<
-  TRowHeadInput extends GridHeadInput,
-  TColumnHeadInput extends GridHeadInput,
-> {
-  rowHeaders: readonly TRowHeadInput[];
-  colHeaders: readonly TColumnHeadInput[];
-}
+export type {
+  Grid,
+  GridAxisIds,
+  GridOptions,
+  GridPersistAdapter,
+  GridPersistOption,
+  GridPosition,
+  GridRows,
+  GridSchemaOptions,
+  GridState,
+  GridStateCell,
+  GridStateInitializer,
+  GridUpsertHead,
+} from "./grid.types.js";
 
-export type GridPosition<
-  TColumnId extends string = string,
-  TRowId extends string = string,
-> = readonly [columnId: TColumnId, rowId: TRowId];
+type BroadSchemaRowHead<TState extends GridState<GridRecord, GridRecord, GridRecord>> =
+  SchemaRow<TState> & GridHead<string>;
 
-export type GridRows<
-  TColumnId extends string = string,
-  TRowId extends string = string,
-> = readonly (readonly GridPosition<TColumnId, TRowId>[])[];
+type BroadSchemaColumnHead<TState extends GridState<GridRecord, GridRecord, GridRecord>> =
+  SchemaColumn<TState> & GridHead<string>;
 
-type GridRecord = Record<string, unknown>;
-
-export type GridCollectionInput<
-  THead extends GridRecord,
-  THeadIdKey extends keyof THead & string,
-  TCell extends GridRecord,
-  TCellKey extends keyof TCell & string,
-> = readonly [heads: readonly THead[], headIdKey: THeadIdKey, cellKey: TCellKey];
-
-export interface GridCollectionOptions<
-  TCell extends GridRecord,
-  TRowHead extends GridRecord,
-  TColumnHead extends GridRecord,
-  TRowHeadIdKey extends keyof TRowHead & string,
-  TColumnHeadIdKey extends keyof TColumnHead & string,
-  TRowCellKey extends keyof TCell & string,
-  TColumnCellKey extends keyof TCell & string,
-> {
-  rowHeaders: GridCollectionInput<TRowHead, TRowHeadIdKey, TCell, TRowCellKey>;
-  colHeaders: GridCollectionInput<TColumnHead, TColumnHeadIdKey, TCell, TColumnCellKey>;
-}
-
-export interface Grid<
-  TCell,
-  TRowId extends string = string,
-  TColumnId extends string = string,
-  TRowHead extends GridHead<TRowId> = GridHead<TRowId>,
-  TColumnHead extends GridHead<TColumnId> = GridHead<TColumnId>,
-> {
-  readonly rowHeaders: readonly TRowId[];
-  readonly colHeaders: readonly TColumnId[];
-  getCell: (rowId: TRowId, columnId: TColumnId) => Cell<TCell>;
-  getValue: (rowId: TRowId, columnId: TColumnId) => TCell;
-  setValue: (rowId: TRowId, columnId: TColumnId, newValue: TCell) => void;
-  hasCell: (rowId: TRowId, columnId: TColumnId) => boolean;
-  getRowHead: (rowId: TRowId) => TRowHead;
-  getColumnHead: (columnId: TColumnId) => TColumnHead;
-  updateRowHead: (rowId: TRowId, nextRowHead: Updater<TRowHead>) => void;
-  updateColumnHead: (columnId: TColumnId, nextColumnHead: Updater<TColumnHead>) => void;
-  subscribeRowHead: (rowId: TRowId, callback: Subscriber) => () => void;
-  subscribeColumnHead: (columnId: TColumnId, callback: Subscriber) => () => void;
-  getRowCells: (rowId: TRowId) => readonly GridAxisCell<TCell, TRowId, TColumnId>[];
-  getColumnCells: (
-    columnId: TColumnId,
-  ) => readonly GridAxisCell<TCell, TRowId, TColumnId>[];
-  getRowTailState: <TTail>(rowId: TRowId) => GridTailState<TTail>;
-  getColumnTailState: <TTail>(columnId: TColumnId) => GridTailState<TTail>;
-  getRowTail: <TTail>(rowId: TRowId) => TTail | null;
-  getColumnTail: <TTail>(columnId: TColumnId) => TTail | null;
-  updateRowTail: (rowId: TRowId, nextRowTail: Updater<unknown | null>) => void;
-  updateColumnTail: (
-    columnId: TColumnId,
-    nextColumnTail: Updater<unknown | null>,
-  ) => void;
-  subscribeRowTail: (rowId: TRowId, callback: Subscriber) => () => void;
-  subscribeColumnTail: (columnId: TColumnId, callback: Subscriber) => () => void;
-  registerRowTail: <TTail>(
-    rowId: TRowId,
-    onRowUpdate: GridAxisTailUpdater<TCell, TRowId, TColumnId, TTail>,
-  ) => () => void;
-  registerColumnTail: <TTail>(
-    columnId: TColumnId,
-    onColumnUpdate: GridAxisTailUpdater<TCell, TRowId, TColumnId, TTail>,
-  ) => () => void;
-  recomputeRowTail: (rowId: TRowId) => void;
-  recomputeColumnTail: (columnId: TColumnId) => void;
-}
-
-export interface GridAxisIds<TRowId extends string, TColumnId extends string> {
-  rows: readonly TRowId[];
-  cols: readonly TColumnId[];
-  reorderRow: (activeRowId: TRowId | string, overRowId: TRowId | string) => boolean;
-  reorderColumn: (
-    activeColumnId: TColumnId | string,
-    overColumnId: TColumnId | string,
-  ) => boolean;
-}
+type BroadSchemaSnapshot<TState extends GridState<GridRecord, GridRecord, GridRecord>> =
+  GridState<
+    SchemaCell<TState>,
+    BroadSchemaRowHead<TState>,
+    BroadSchemaColumnHead<TState>
+  >;
 
 export function grid<
   TCell,
@@ -117,83 +80,115 @@ export function grid<
   TColumnHeadInput extends GridHeadInput,
 >(
   cells: Cell<TCell>[][],
-  { colHeaders, rowHeaders }: GridOptions<TRowHeadInput, TColumnHeadInput>,
+  options: GridOptions<
+    TRowHeadInput,
+    TColumnHeadInput,
+    GridMatrixSnapshot<TCell, TRowHeadInput, TColumnHeadInput>
+  >,
 ): Grid<
   TCell,
   GridHeadId<TRowHeadInput>,
   GridHeadId<TColumnHeadInput>,
   ResolvedGridHead<TRowHeadInput>,
-  ResolvedGridHead<TColumnHeadInput>
+  ResolvedGridHead<TColumnHeadInput>,
+  GridStateCell<TCell, GridHeadId<TRowHeadInput>, GridHeadId<TColumnHeadInput>>,
+  GridMatrixSnapshot<TCell, TRowHeadInput, TColumnHeadInput>
+>;
+
+export function grid<TState extends GridState<GridRecord, GridRecord, GridRecord>>(
+  source: GridStateInitializer<TState>,
+  options: GridSchemaOptions<
+    TState,
+    keyof SchemaRow<TState> & string,
+    keyof SchemaColumn<TState> & string,
+    keyof SchemaCell<TState> & string,
+    keyof SchemaCell<TState> & string,
+    BroadSchemaSnapshot<TState>
+  >,
+): Grid<
+  SchemaCell<TState>,
+  string,
+  string,
+  BroadSchemaRowHead<TState>,
+  BroadSchemaColumnHead<TState>,
+  SchemaCell<TState>,
+  BroadSchemaSnapshot<TState>
 >;
 
 export function grid<
-  TCell extends GridRecord,
-  TRowHead extends GridRecord,
-  TColumnHead extends GridRecord,
-  TRowHeadIdKey extends keyof TRowHead & string,
-  TColumnHeadIdKey extends keyof TColumnHead & string,
-  TRowCellKey extends keyof TCell & string,
-  TColumnCellKey extends keyof TCell & string,
+  TState extends GridState<GridRecord, GridRecord, GridRecord>,
+  TRowHeadIdKey extends keyof SchemaRow<TState> & string,
+  TColumnHeadIdKey extends keyof SchemaColumn<TState> & string,
+  TRowCellKey extends keyof SchemaCell<TState> & string,
+  TColumnCellKey extends keyof SchemaCell<TState> & string,
 >(
-  cells: readonly (TCell &
-    Record<TRowCellKey, Extract<TRowHead[TRowHeadIdKey], string>> &
-    Record<TColumnCellKey, Extract<TColumnHead[TColumnHeadIdKey], string>>)[],
-  {
-    rowHeaders,
-    colHeaders,
-  }: GridCollectionOptions<
-    TCell,
-    TRowHead,
-    TColumnHead,
+  source: GridStateInitializer<TState>,
+  options: GridSchemaOptions<
+    TState,
     TRowHeadIdKey,
     TColumnHeadIdKey,
     TRowCellKey,
-    TColumnCellKey
+    TColumnCellKey,
+    SchemaSnapshot<TState, TRowHeadIdKey, TColumnHeadIdKey, TRowCellKey, TColumnCellKey>
   >,
 ): Grid<
-  TCell &
-    Record<TRowCellKey, Extract<TRowHead[TRowHeadIdKey], string>> &
-    Record<TColumnCellKey, Extract<TColumnHead[TColumnHeadIdKey], string>>,
-  Extract<TRowHead[TRowHeadIdKey], string>,
-  Extract<TColumnHead[TColumnHeadIdKey], string>,
-  TRowHead & GridHead<Extract<TRowHead[TRowHeadIdKey], string>>,
-  TColumnHead & GridHead<Extract<TColumnHead[TColumnHeadIdKey], string>>
+  SchemaCellValue<TState, TRowHeadIdKey, TColumnHeadIdKey, TRowCellKey, TColumnCellKey>,
+  SchemaRowId<TState, TRowHeadIdKey>,
+  SchemaColumnId<TState, TColumnHeadIdKey>,
+  SchemaRowHead<TState, TRowHeadIdKey>,
+  SchemaColumnHead<TState, TColumnHeadIdKey>,
+  SchemaCellValue<TState, TRowHeadIdKey, TColumnHeadIdKey, TRowCellKey, TColumnCellKey>,
+  SchemaSnapshot<TState, TRowHeadIdKey, TColumnHeadIdKey, TRowCellKey, TColumnCellKey>
 >;
 
-export function grid(
-  cells: Cell<unknown>[][] | readonly GridRecord[],
-  options:
-    | GridOptions<GridHeadInput, GridHeadInput>
-    | {
-        rowHeaders: readonly [readonly GridRecord[], string, string];
-        colHeaders: readonly [readonly GridRecord[], string, string];
-      },
-) {
-  if (isCollectionGridOptions(options)) {
-    const [rowSource, rowHeadIdKey, rowCellKey] = options.rowHeaders;
-    const [columnSource, columnHeadIdKey, columnCellKey] = options.colHeaders;
-    const normalizedRowHeads = normalizeCollectionHeads(rowSource, rowHeadIdKey);
-    const normalizedColumnHeads = normalizeCollectionHeads(columnSource, columnHeadIdKey);
+export function grid(input: unknown, options: unknown) {
+  if (Array.isArray(input)) {
+    const matrixOptions = options as GridOptions<GridHeadInput, GridHeadInput, any>;
+    const { rowHeaders, colHeaders, persist } = matrixOptions;
+    const normalizedRowHeads = normalizeGridHeads(rowHeaders);
+    const normalizedColumnHeads = normalizeGridHeads(colHeaders);
 
     return createGridStore(
-      createGridCellsFromRecords(
-        cells as readonly GridRecord[],
-        normalizedRowHeads,
-        normalizedColumnHeads,
-        rowCellKey,
-        columnCellKey,
-      ),
       normalizedRowHeads,
       normalizedColumnHeads,
+      createMatrixInitialCells(
+        input as Cell<unknown>[][],
+        normalizedRowHeads,
+        normalizedColumnHeads,
+      ),
+      createMatrixStateAdapter<unknown, string, string>(),
+      persist as GridPersistOption<any> | undefined,
     );
   }
 
-  const { colHeaders, rowHeaders } = options;
+  const schemaOptions = options as GridSchemaOptions<
+    GridState<GridRecord, GridRecord, GridRecord>,
+    string,
+    string,
+    string,
+    string,
+    any
+  >;
+  const initialState = normalizeGridState(
+    resolveGridStateInitializer(
+      input as GridStateInitializer<GridState<GridRecord, GridRecord, GridRecord>>,
+    ),
+  );
+  const [rowHeadIdKey, rowCellKey] = schemaOptions.rowHeaders;
+  const [columnHeadIdKey, columnCellKey] = schemaOptions.colHeaders;
+  const normalizedRowHeads = normalizeRecordHeads(initialState.rows, rowHeadIdKey);
+  const normalizedColumnHeads = normalizeRecordHeads(
+    initialState.columns,
+    columnHeadIdKey,
+  );
+  const stateAdapter = createSchemaStateAdapter(rowCellKey, columnCellKey);
 
   return createGridStore(
-    cells as Cell<unknown>[][],
-    normalizeGridHeads(rowHeaders),
-    normalizeGridHeads(colHeaders),
+    normalizedRowHeads,
+    normalizedColumnHeads,
+    createGridInitialCellsFromState(initialState.cells, stateAdapter),
+    stateAdapter,
+    schemaOptions.persist as GridPersistOption<any> | undefined,
   );
 }
 
@@ -203,25 +198,24 @@ function createGridStore<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  cells: Cell<TCell>[][],
-  normalizedRowHeads: readonly TRowHead[],
-  normalizedColumnHeads: readonly TColumnHead[],
-): Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead> {
-  if (cells.length !== normalizedRowHeads.length) {
-    throw new Error(
-      `Grid row count mismatch: received ${cells.length} rows for ${normalizedRowHeads.length} row headers.`,
-    );
-  }
+  initialRows: readonly TRowHead[],
+  initialColumns: readonly TColumnHead[],
+  initialCells: readonly GridInitialCellEntry<TCell, TRowId, TColumnId>[],
+  stateAdapter: GridStateAdapter<TCell, TRowId, TColumnId, TStateCell>,
+  persist?: GridPersistOption<TState>,
+): Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState> {
+  assertUniqueHeadIds(initialRows, "row");
+  assertUniqueHeadIds(initialColumns, "column");
 
-  const rowHeadOrder = createHeadOrderIndex(normalizedRowHeads);
-  const columnHeadOrder = createHeadOrderIndex(normalizedColumnHeads);
-  const rowHeadCells = createHeadCellMap<TRowId, TRowHead>(normalizedRowHeads);
-  const columnHeadCells = createHeadCellMap<TColumnId, TColumnHead>(
-    normalizedColumnHeads,
-  );
-  const rowTailCells = createTailCellMap<TRowId>(normalizedRowHeads);
-  const columnTailCells = createTailCellMap<TColumnId>(normalizedColumnHeads);
+  const rowHeadOrder = createHeadOrderIndex(initialRows);
+  const columnHeadOrder = createHeadOrderIndex(initialColumns);
+  const rowHeadCells = createHeadCellMap<TRowId, TRowHead>(initialRows);
+  const columnHeadCells = createHeadCellMap<TColumnId, TColumnHead>(initialColumns);
+  const rowTailCells = createTailCellMap<TRowId>(initialRows);
+  const columnTailCells = createTailCellMap<TColumnId>(initialColumns);
   const rowTailUpdaters = new Map<
     TRowId,
     GridAxisTailUpdater<TCell, TRowId, TColumnId, unknown>
@@ -232,15 +226,46 @@ function createGridStore<
   >();
   const cellsMap = new Map<string, Cell<TCell>>();
 
+  let nextRowFallbackOrder = initialRows.length;
+  let nextColumnFallbackOrder = initialColumns.length;
+  let isApplyingState = false;
+
   const getOrderedRowHeads = () => getOrderedHeads(rowHeadCells, rowHeadOrder);
   const getOrderedColumnHeads = () => getOrderedHeads(columnHeadCells, columnHeadOrder);
+
+  const normalizeCellValue = (rowId: TRowId, columnId: TColumnId, value: TCell) => {
+    return stateAdapter.deserializeCell(
+      stateAdapter.serializeCell(rowId, columnId, value),
+    ).value;
+  };
+
+  const attachCell = (rowId: TRowId, columnId: TColumnId, currentCell: Cell<TCell>) => {
+    if (!rowHeadCells.has(rowId)) throw new Error(`Missing row header "${rowId}".`);
+
+    if (!columnHeadCells.has(columnId))
+      throw new Error(`Missing column header "${columnId}".`);
+
+    const gridKey = createGridKey(rowId, columnId);
+
+    if (cellsMap.has(gridKey))
+      throw new Error(`Duplicate cell for row "${rowId}" and column "${columnId}".`);
+
+    cellsMap.set(gridKey, currentCell);
+    currentCell.subscribe(() => {
+      recomputeRowTail(rowId);
+      recomputeColumnTail(columnId);
+
+      if (isApplyingState) return;
+
+      markStateChanged();
+    });
+  };
 
   const getCell = (rowId: TRowId, columnId: TColumnId) => {
     const currentCell = cellsMap.get(createGridKey(rowId, columnId));
 
-    if (!currentCell) {
+    if (!currentCell)
       throw new Error(`Missing cell for row "${rowId}" and column "${columnId}".`);
-    }
 
     return currentCell;
   };
@@ -258,12 +283,18 @@ function createGridStore<
   };
 
   const getRowCells = (rowId: TRowId) =>
-    getOrderedColumnHeads().map((columnHead) =>
-      createAxisCellSnapshot(rowId, columnHead.id),
-    );
+    getOrderedColumnHeads().flatMap((columnHead) => {
+      if (!cellsMap.has(createGridKey(rowId, columnHead.id))) return [];
+
+      return [createAxisCellSnapshot(rowId, columnHead.id)];
+    });
 
   const getColumnCells = (columnId: TColumnId) =>
-    getOrderedRowHeads().map((rowHead) => createAxisCellSnapshot(rowHead.id, columnId));
+    getOrderedRowHeads().flatMap((rowHead) => {
+      if (!cellsMap.has(createGridKey(rowHead.id, columnId))) return [];
+
+      return [createAxisCellSnapshot(rowHead.id, columnId)];
+    });
 
   const recomputeRowTail = (rowId: TRowId) => {
     const onRowUpdate = rowTailUpdaters.get(rowId);
@@ -299,29 +330,137 @@ function createGridStore<
     });
   };
 
-  cells.forEach((row, rowIndex) => {
-    const rowId = normalizedRowHeads[rowIndex].id;
+  const syncAxisHeads = <TId extends string, THead extends GridHead<TId>>(
+    nextHeads: readonly THead[],
+    axis: "row" | "column",
+    headCells: Map<TId, Cell<THead>>,
+    tailCells: Map<TId, Cell<GridTailState<unknown>>>,
+    headOrder: Map<TId, number>,
+    onRemove?: (id: TId) => void,
+  ) => {
+    assertUniqueHeadIds(nextHeads, axis);
 
-    if (row.length !== normalizedColumnHeads.length) {
-      throw new Error(
-        `Grid column count mismatch on row ${rowIndex}: received ${row.length} cells for ${normalizedColumnHeads.length} column headers.`,
+    const nextIds = new Set<TId>();
+
+    nextHeads.forEach((nextHead, index) => {
+      nextIds.add(nextHead.id);
+
+      const currentHeadCell = headCells.get(nextHead.id);
+
+      if (currentHeadCell) currentHeadCell.set(nextHead);
+      else headCells.set(nextHead.id, cell(nextHead));
+
+      if (!tailCells.has(nextHead.id))
+        tailCells.set(nextHead.id, cell(createEmptyTailState()));
+
+      headOrder.set(nextHead.id, index);
+    });
+
+    [...headCells.keys()].forEach((id) => {
+      if (nextIds.has(id)) return;
+
+      headCells.delete(id);
+      tailCells.delete(id);
+      headOrder.delete(id);
+      onRemove?.(id);
+    });
+  };
+
+  const replaceState = (nextState: TState) => {
+    isApplyingState = true;
+
+    try {
+      syncAxisHeads(
+        nextState.rows,
+        "row",
+        rowHeadCells,
+        rowTailCells,
+        rowHeadOrder,
+        (id) => {
+          rowTailUpdaters.delete(id as TRowId);
+        },
       );
+      syncAxisHeads(
+        nextState.columns,
+        "column",
+        columnHeadCells,
+        columnTailCells,
+        columnHeadOrder,
+        (id) => {
+          columnTailUpdaters.delete(id as TColumnId);
+        },
+      );
+
+      const nextCells = new Map<
+        string,
+        {
+          rowId: TRowId;
+          columnId: TColumnId;
+          value: TCell;
+        }
+      >();
+
+      nextState.cells.forEach((nextStateCell) => {
+        const { rowId, columnId, value } = stateAdapter.deserializeCell(nextStateCell);
+
+        if (!rowHeadCells.has(rowId)) {
+          throw new Error(`Missing row header "${rowId}".`);
+        }
+
+        if (!columnHeadCells.has(columnId)) {
+          throw new Error(`Missing column header "${columnId}".`);
+        }
+
+        const gridKey = createGridKey(rowId, columnId);
+
+        if (nextCells.has(gridKey)) {
+          throw new Error(`Duplicate cell for row "${rowId}" and column "${columnId}".`);
+        }
+
+        nextCells.set(gridKey, {
+          rowId,
+          columnId,
+          value: normalizeCellValue(rowId, columnId, value),
+        });
+      });
+
+      [...cellsMap.keys()].forEach((gridKey) => {
+        if (!nextCells.has(gridKey)) {
+          cellsMap.delete(gridKey);
+        }
+      });
+
+      nextCells.forEach(({ rowId, columnId, value }, gridKey) => {
+        const currentCell = cellsMap.get(gridKey);
+
+        if (currentCell) {
+          currentCell.set(value);
+        } else {
+          attachCell(rowId, columnId, cell(value));
+        }
+      });
+
+      nextRowFallbackOrder = rowHeadCells.size;
+      nextColumnFallbackOrder = columnHeadCells.size;
+    } finally {
+      isApplyingState = false;
     }
 
-    row.forEach((currentCell, columnIndex) => {
-      const columnId = normalizedColumnHeads[columnIndex].id;
+    recomputeAllRowTails();
+    recomputeAllColumnTails();
+  };
 
-      cellsMap.set(createGridKey(rowId, columnId), currentCell);
-      currentCell.subscribe(() => {
-        recomputeRowTail(rowId);
-        recomputeColumnTail(columnId);
-      });
-    });
+  const { hydrate, markStateChanged } = createGridPersistController(persist, {
+    getState,
+    replaceState,
+    isApplyingState: () => isApplyingState,
   });
 
-  const getRowHead = (rowId: TRowId) => getHeadCell(rowHeadCells, rowId, "row").get();
-  const getColumnHead = (columnId: TColumnId) =>
-    getHeadCell(columnHeadCells, columnId, "column").get();
+  initialCells.forEach(({ rowId, columnId, cell: currentCell }) => {
+    attachCell(rowId, columnId, currentCell);
+  });
+
+  hydrate();
 
   const updateRowHead = (rowId: TRowId, nextRowHead: Updater<TRowHead>) => {
     const currentHeadCell = getHeadCell(rowHeadCells, rowId, "row");
@@ -331,9 +470,13 @@ function createGridStore<
     assertHeadId("row", rowId, resolvedHead.id);
     currentHeadCell.set(resolvedHead);
 
-    if (currentHead.order !== resolvedHead.order) {
-      recomputeAllColumnTails();
+    if (currentHead.order === resolvedHead.order) {
+      markStateChanged();
+      return;
     }
+
+    recomputeAllColumnTails();
+    markStateChanged();
   };
 
   const updateColumnHead = (
@@ -347,29 +490,148 @@ function createGridStore<
     assertHeadId("column", columnId, resolvedHead.id);
     currentHeadCell.set(resolvedHead);
 
-    if (currentHead.order !== resolvedHead.order) {
-      recomputeAllRowTails();
+    if (currentHead.order === resolvedHead.order) {
+      markStateChanged();
+      return;
     }
+
+    recomputeAllRowTails();
+    markStateChanged();
   };
 
-  function getRowTail<TTail>(rowId: TRowId) {
-    const tailState = getTailCell(rowTailCells, rowId, "row").get();
+  const upsertRow = (nextRowHead: GridUpsertHead<TRowHead>) => {
+    const rowHeadLike = nextRowHead as GridRecord & { id: TRowId };
 
-    return tailState.isReactive ? (tailState.value as TTail | null) : null;
-  }
+    if (typeof rowHeadLike.id !== "string") {
+      throw new Error("Row header upserts must include a string id.");
+    }
 
-  function getColumnTail<TTail>(columnId: TColumnId) {
-    const tailState = getTailCell(columnTailCells, columnId, "column").get();
+    const currentHeadCell = rowHeadCells.get(rowHeadLike.id);
+    const currentHead = currentHeadCell?.get();
+    const resolvedHead = normalizeUpsertHead(
+      rowHeadLike,
+      currentHead,
+      nextRowFallbackOrder,
+    ) as TRowHead;
 
-    return tailState.isReactive ? (tailState.value as TTail | null) : null;
-  }
+    if (currentHeadCell) {
+      currentHeadCell.set(resolvedHead);
+    } else {
+      rowHeadCells.set(resolvedHead.id, cell(resolvedHead));
+      rowTailCells.set(resolvedHead.id, cell(createEmptyTailState()));
+      rowHeadOrder.set(resolvedHead.id, nextRowFallbackOrder);
+      nextRowFallbackOrder += 1;
+    }
 
-  function getRowTailState<TTail>(rowId: TRowId) {
-    return getTailCell(rowTailCells, rowId, "row").get() as GridTailState<TTail>;
-  }
+    recomputeRowTail(resolvedHead.id);
 
-  function getColumnTailState<TTail>(columnId: TColumnId) {
-    return getTailCell(columnTailCells, columnId, "column").get() as GridTailState<TTail>;
+    if (currentHead && currentHead.order === resolvedHead.order) {
+      markStateChanged();
+      return;
+    }
+
+    recomputeAllColumnTails();
+    markStateChanged();
+  };
+
+  const upsertColumn = (nextColumnHead: GridUpsertHead<TColumnHead>) => {
+    const columnHeadLike = nextColumnHead as GridRecord & { id: TColumnId };
+
+    if (typeof columnHeadLike.id !== "string") {
+      throw new Error("Column header upserts must include a string id.");
+    }
+
+    const currentHeadCell = columnHeadCells.get(columnHeadLike.id);
+    const currentHead = currentHeadCell?.get();
+    const resolvedHead = normalizeUpsertHead(
+      columnHeadLike,
+      currentHead,
+      nextColumnFallbackOrder,
+    ) as TColumnHead;
+
+    if (currentHeadCell) {
+      currentHeadCell.set(resolvedHead);
+    } else {
+      columnHeadCells.set(resolvedHead.id, cell(resolvedHead));
+      columnTailCells.set(resolvedHead.id, cell(createEmptyTailState()));
+      columnHeadOrder.set(resolvedHead.id, nextColumnFallbackOrder);
+      nextColumnFallbackOrder += 1;
+    }
+
+    recomputeColumnTail(resolvedHead.id);
+
+    if (currentHead && currentHead.order === resolvedHead.order) {
+      markStateChanged();
+      return;
+    }
+
+    recomputeAllRowTails();
+    markStateChanged();
+  };
+
+  const upsertCells = (nextCells: readonly TStateCell[]) => {
+    if (nextCells.length === 0) {
+      return;
+    }
+
+    const touchedRowIds = new Set<TRowId>();
+    const touchedColumnIds = new Set<TColumnId>();
+
+    isApplyingState = true;
+
+    try {
+      nextCells.forEach((nextStateCell) => {
+        const { rowId, columnId, value } = stateAdapter.deserializeCell(nextStateCell);
+
+        if (!rowHeadCells.has(rowId)) throw new Error(`Missing row header "${rowId}".`);
+
+        if (!columnHeadCells.has(columnId))
+          throw new Error(`Missing column header "${columnId}".`);
+
+        const normalizedValue = normalizeCellValue(rowId, columnId, value);
+        const gridKey = createGridKey(rowId, columnId);
+        const currentCell = cellsMap.get(gridKey);
+
+        if (currentCell) currentCell.set(normalizedValue);
+        else attachCell(rowId, columnId, cell(normalizedValue));
+
+        touchedRowIds.add(rowId);
+        touchedColumnIds.add(columnId);
+      });
+    } finally {
+      isApplyingState = false;
+    }
+
+    touchedRowIds.forEach((rowId) => {
+      recomputeRowTail(rowId);
+    });
+    touchedColumnIds.forEach((columnId) => {
+      recomputeColumnTail(columnId);
+    });
+
+    markStateChanged();
+  };
+
+  function getState() {
+    const rows = getOrderedRowHeads();
+    const columns = getOrderedColumnHeads();
+    const cells = rows.flatMap((rowHead) =>
+      columns.flatMap((columnHead) => {
+        const currentCell = cellsMap.get(createGridKey(rowHead.id, columnHead.id));
+
+        if (!currentCell) {
+          return [];
+        }
+
+        return [stateAdapter.serializeCell(rowHead.id, columnHead.id, currentCell.get())];
+      }),
+    );
+
+    return {
+      rows,
+      columns,
+      cells,
+    } as unknown as TState;
   }
 
   const updateRowTail = (rowId: TRowId, nextRowTail: Updater<unknown | null>) => {
@@ -402,9 +664,11 @@ function createGridStore<
     recomputeRowTail(rowId);
 
     return () => {
-      if (rowTailUpdaters.get(rowId) === onRowUpdate) {
-        rowTailUpdaters.delete(rowId);
+      if (rowTailUpdaters.get(rowId) !== onRowUpdate) {
+        return;
       }
+
+      rowTailUpdaters.delete(rowId);
     };
   }
 
@@ -419,9 +683,11 @@ function createGridStore<
     recomputeColumnTail(columnId);
 
     return () => {
-      if (columnTailUpdaters.get(columnId) === onColumnUpdate) {
-        columnTailUpdaters.delete(columnId);
+      if (columnTailUpdaters.get(columnId) !== onColumnUpdate) {
+        return;
       }
+
+      columnTailUpdaters.delete(columnId);
     };
   }
 
@@ -432,26 +698,53 @@ function createGridStore<
     get colHeaders() {
       return getOrderedColumnHeads().map((columnHead) => columnHead.id);
     },
+    getState,
     getCell,
     getValue: (rowId, columnId) => getCell(rowId, columnId).get(),
     setValue: (rowId, columnId, newValue) => {
-      getCell(rowId, columnId).set(newValue);
+      const currentCell = getCell(rowId, columnId);
+
+      isApplyingState = true;
+
+      try {
+        currentCell.set(normalizeCellValue(rowId, columnId, newValue));
+      } finally {
+        isApplyingState = false;
+      }
+
+      recomputeRowTail(rowId);
+      recomputeColumnTail(columnId);
+      markStateChanged();
     },
     hasCell: (rowId, columnId) => cellsMap.has(createGridKey(rowId, columnId)),
-    getRowHead,
-    getColumnHead,
+    getRowHead: (rowId) => getHeadCell(rowHeadCells, rowId, "row").get(),
+    getColumnHead: (columnId) => getHeadCell(columnHeadCells, columnId, "column").get(),
     updateRowHead,
     updateColumnHead,
+    upsertRow,
+    upsertColumn,
+    upsertCell: (nextCell) => upsertCells([nextCell]),
+    upsertCells,
     subscribeRowHead: (rowId, callback) =>
       getHeadCell(rowHeadCells, rowId, "row").subscribe(callback),
     subscribeColumnHead: (columnId, callback) =>
       getHeadCell(columnHeadCells, columnId, "column").subscribe(callback),
     getRowCells,
     getColumnCells,
-    getRowTailState,
-    getColumnTailState,
-    getRowTail,
-    getColumnTail,
+    getRowTailState: <TTail>(rowId: TRowId) =>
+      getTailCell(rowTailCells, rowId, "row").get() as GridTailState<TTail>,
+    getColumnTailState: <TTail>(columnId: TColumnId) =>
+      getTailCell(columnTailCells, columnId, "column").get() as GridTailState<TTail>,
+    getRowTail: <TTail>(rowId: TRowId) => {
+      const tailState = getTailCell(rowTailCells, rowId, "row").get();
+
+      return tailState.isReactive ? (tailState.value as TTail | null) : null;
+    },
+    getColumnTail: <TTail>(columnId: TColumnId) => {
+      const tailState = getTailCell(columnTailCells, columnId, "column").get();
+
+      return tailState.isReactive ? (tailState.value as TTail | null) : null;
+    },
     updateRowTail,
     updateColumnTail,
     subscribeRowTail: (rowId, callback) =>
@@ -481,8 +774,10 @@ export function useGrid<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
 ): GridAxisIds<TRowId, TColumnId> {
   return {
     rows: currentGrid.rowHeaders,
@@ -541,33 +836,32 @@ export function useGrid<
   };
 }
 
-function isCollectionGridOptions(value: unknown): value is {
-  rowHeaders: readonly [readonly GridRecord[], string, string];
-  colHeaders: readonly [readonly GridRecord[], string, string];
-} {
+function normalizeGridState<TState extends GridState<GridRecord, GridRecord, GridRecord>>(
+  value: TState | Partial<TState>,
+): GridState<SchemaCell<TState>, SchemaRow<TState>, SchemaColumn<TState>> {
   if (!value || typeof value !== "object") {
-    return false;
+    throw new Error("Grid state initializer must return an object.");
   }
 
-  const rowHeaders = "rowHeaders" in value ? value.rowHeaders : null;
-  const colHeaders = "colHeaders" in value ? value.colHeaders : null;
+  const partialState = value as Partial<
+    GridState<SchemaCell<TState>, SchemaRow<TState>, SchemaColumn<TState>>
+  >;
+  const { cells = [], rows = [], columns = [] } = partialState;
 
-  return isCollectionInput(rowHeaders) && isCollectionInput(colHeaders);
+  if (!Array.isArray(cells) || !Array.isArray(rows) || !Array.isArray(columns)) {
+    throw new Error(
+      "Grid state initializer must return an object with cells, rows, and columns arrays.",
+    );
+  }
+
+  return {
+    cells,
+    rows,
+    columns,
+  };
 }
 
-function isCollectionInput(
-  value: unknown,
-): value is readonly [readonly GridRecord[], string, string] {
-  return (
-    Array.isArray(value) &&
-    value.length === 3 &&
-    Array.isArray(value[0]) &&
-    typeof value[1] === "string" &&
-    typeof value[2] === "string"
-  );
-}
-
-function normalizeCollectionHeads<
+function normalizeRecordHeads<
   THead extends GridRecord,
   THeadIdKey extends keyof THead & string,
   TId extends Extract<THead[THeadIdKey], string>,
@@ -588,51 +882,170 @@ function normalizeCollectionHeads<
   });
 }
 
-function createGridCellsFromRecords<
-  TCell extends GridRecord,
-  TRowId extends string,
-  TColumnId extends string,
->(
-  cells: readonly TCell[],
+function createMatrixInitialCells<TCell, TRowId extends string, TColumnId extends string>(
+  cells: Cell<TCell>[][],
   rowHeads: readonly GridHead<TRowId>[],
   columnHeads: readonly GridHead<TColumnId>[],
-  rowCellKey: keyof TCell & string,
-  columnCellKey: keyof TCell & string,
 ) {
-  const cellsMap = new Map<string, TCell>();
+  if (cells.length !== rowHeads.length) {
+    throw new Error(
+      `Grid row count mismatch: received ${cells.length} rows for ${rowHeads.length} row headers.`,
+    );
+  }
 
-  cells.forEach((currentCell) => {
-    const rowId = currentCell[rowCellKey as keyof TCell];
-    const columnId = currentCell[columnCellKey as keyof TCell];
+  return cells.flatMap((row, rowIndex) => {
+    const rowId = rowHeads[rowIndex].id;
 
-    if (typeof rowId !== "string" || typeof columnId !== "string") {
+    if (row.length !== columnHeads.length) {
       throw new Error(
-        `Grid cell keys "${String(rowCellKey)}" and "${String(columnCellKey)}" must resolve to string ids.`,
+        `Grid column count mismatch on row ${rowIndex}: received ${row.length} cells for ${columnHeads.length} column headers.`,
       );
     }
 
+    return row.map((currentCell, columnIndex) => ({
+      rowId,
+      columnId: columnHeads[columnIndex].id,
+      cell: currentCell,
+    }));
+  });
+}
+
+function createGridInitialCellsFromState<
+  TCell,
+  TRowId extends string,
+  TColumnId extends string,
+  TStateCell,
+>(
+  stateCells: readonly TStateCell[],
+  stateAdapter: GridStateAdapter<TCell, TRowId, TColumnId, TStateCell>,
+) {
+  const initialCells: GridInitialCellEntry<TCell, TRowId, TColumnId>[] = [];
+  const seenKeys = new Set<string>();
+
+  stateCells.forEach((stateCell) => {
+    const { rowId, columnId, value } = stateAdapter.deserializeCell(stateCell);
     const gridKey = createGridKey(rowId, columnId);
 
-    if (cellsMap.has(gridKey)) {
+    if (seenKeys.has(gridKey)) {
       throw new Error(`Duplicate cell for row "${rowId}" and column "${columnId}".`);
     }
 
-    cellsMap.set(gridKey, currentCell);
+    seenKeys.add(gridKey);
+    initialCells.push({
+      rowId,
+      columnId,
+      cell: cell(value),
+    });
   });
 
-  return rowHeads.map((rowHead) =>
-    columnHeads.map((columnHead) => {
-      const currentCell = cellsMap.get(createGridKey(rowHead.id, columnHead.id));
+  return initialCells;
+}
 
-      if (!currentCell) {
+function createMatrixStateAdapter<
+  TCell,
+  TRowId extends string,
+  TColumnId extends string,
+>(): GridStateAdapter<TCell, TRowId, TColumnId, GridStateCell<TCell, TRowId, TColumnId>> {
+  return {
+    deserializeCell: (stateCell) => ({
+      rowId: stateCell.rowId,
+      columnId: stateCell.columnId,
+      value: stateCell.value,
+    }),
+    serializeCell: (rowId, columnId, value) => ({
+      rowId,
+      columnId,
+      value,
+    }),
+  };
+}
+
+function createSchemaStateAdapter<
+  TCell extends GridRecord,
+  TRowId extends string,
+  TColumnId extends string,
+  TRowCellKey extends keyof TCell & string,
+  TColumnCellKey extends keyof TCell & string,
+>(
+  rowCellKey: TRowCellKey,
+  columnCellKey: TColumnCellKey,
+): GridStateAdapter<TCell, TRowId, TColumnId, TCell> {
+  return {
+    deserializeCell: (stateCell) => {
+      const rowId = stateCell[rowCellKey];
+      const columnId = stateCell[columnCellKey];
+
+      if (typeof rowId !== "string" || typeof columnId !== "string") {
         throw new Error(
-          `Missing cell for row "${rowHead.id}" and column "${columnHead.id}".`,
+          `Grid cell keys "${String(rowCellKey)}" and "${String(columnCellKey)}" must resolve to string ids.`,
         );
       }
 
-      return cell(currentCell);
-    }),
-  );
+      return {
+        rowId: rowId as TRowId,
+        columnId: columnId as TColumnId,
+        value: {
+          ...stateCell,
+          [rowCellKey]: rowId,
+          [columnCellKey]: columnId,
+        } as TCell,
+      };
+    },
+    serializeCell: (rowId, columnId, value) =>
+      ({
+        ...value,
+        [rowCellKey]: rowId,
+        [columnCellKey]: columnId,
+      }) as TCell,
+  };
+}
+
+function resolveGridStateInitializer<TState>(state: GridStateInitializer<TState>) {
+  return typeof state === "function"
+    ? (state as () => TState | Partial<TState>)()
+    : state;
+}
+
+function normalizeUpsertHead<TId extends string, THead extends GridHead<TId>>(
+  nextHead: GridRecord & { id: TId },
+  currentHead: THead | undefined,
+  fallbackOrder: number,
+) {
+  return {
+    ...(currentHead ?? {}),
+    ...nextHead,
+    id: nextHead.id,
+    label:
+      typeof nextHead.label === "string"
+        ? nextHead.label
+        : (currentHead?.label ?? readGridHeadLabel(nextHead, nextHead.id)),
+    order:
+      typeof nextHead.order === "number"
+        ? nextHead.order
+        : (currentHead?.order ?? fallbackOrder),
+  } as THead;
+}
+
+function assertUniqueHeadIds<TId extends string, THead extends GridHead<TId>>(
+  heads: readonly THead[],
+  axis: "row" | "column",
+) {
+  const seenIds = new Set<TId>();
+
+  heads.forEach((head) => {
+    if (seenIds.has(head.id)) {
+      throw new Error(`Duplicate ${axis} header "${head.id}".`);
+    }
+
+    seenIds.add(head.id);
+  });
+}
+
+function createEmptyTailState(): GridTailState<unknown> {
+  return {
+    isReactive: false,
+    value: null,
+  };
 }
 
 function readGridHeadLabel(head: GridRecord, id: string) {

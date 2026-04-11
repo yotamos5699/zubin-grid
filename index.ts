@@ -1,16 +1,23 @@
 export { cell, useCell, useCellValue } from "./core/cell.js";
-export type { Cell, Subscriber, Updater } from "./core/cell.js";
+export type { Cell, Subscriber, Updater } from "./core/cell.types.js";
 
 export { createGridKey, grid, useGrid } from "./core/grid.js";
 export type {
   Grid,
   GridAxisIds,
-  GridCollectionInput,
-  GridCollectionOptions,
   GridOptions,
+  GridPersistAdapter,
+  GridPersistOption,
   GridPosition,
   GridRows,
-} from "./core/grid.js";
+  GridSchemaOptions,
+  GridState,
+  GridStateCell,
+  GridStateInitializer,
+  GridUpsertHead,
+} from "./core/grid.types.js";
+
+export { defaultGridPersistAdapter } from "./core/gridPersist.js";
 
 export {
   assertHeadId,
@@ -31,7 +38,7 @@ export type {
   GridHeadObject,
   NormalizedGridHead,
   ResolvedGridHead,
-} from "./core/head.js";
+} from "./core/head.types.js";
 
 export {
   createTailCellMap,
@@ -41,4 +48,8 @@ export {
   useColumnTail,
   useRowTail,
 } from "./core/tail.js";
-export type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./core/tail.js";
+export type {
+  GridAxisCell,
+  GridAxisTailUpdater,
+  GridTailState,
+} from "./core/tail.types.js";

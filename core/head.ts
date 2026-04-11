@@ -2,45 +2,26 @@ import { useCallback, useSyncExternalStore } from "react";
 
 import { cell } from "./cell.js";
 
-import type { Cell, Subscriber, Updater } from "./cell.js";
-import type { Grid, GridPosition } from "./grid.js";
+import type { Cell, Subscriber, Updater } from "./cell.types.js";
+import type { Grid, GridPosition, GridState } from "./grid.types.js";
+import type {
+  GridHead,
+  GridHeadHookResult,
+  GridHeadId,
+  GridHeadInput,
+  GridHeadObject,
+  ResolvedGridHead,
+} from "./head.types.js";
 
-export interface GridHead<TId extends string = string> {
-  id: TId;
-  label: string;
-  order: number;
-}
-
-export type GridHeadObject<TId extends string = string> = {
-  id: TId;
-  label: string;
-  order?: number;
-};
-
-export type GridHeadInput<TId extends string = string> = TId | GridHeadObject<TId>;
-
-export type GridHeadId<THeadInput extends GridHeadInput> = THeadInput extends string
-  ? THeadInput
-  : THeadInput extends GridHeadObject<infer TId>
-    ? TId
-    : never;
-
-export type NormalizedGridHead<THeadInput extends GridHeadInput> =
-  THeadInput extends string
-    ? GridHead<THeadInput>
-    : THeadInput extends GridHeadObject<infer TId>
-      ? Omit<THeadInput, "order"> & GridHead<TId>
-      : never;
-
-export type ResolvedGridHead<THeadInput extends GridHeadInput> =
-  NormalizedGridHead<THeadInput> & GridHead<GridHeadId<THeadInput>>;
-
-export interface GridHeadHookResult<THead extends GridHead<string>> {
-  head: THead;
-  setHead: (nextHead: Updater<THead>) => void;
-  updateLabel: (label: string) => void;
-  updateOrder: (order: number) => void;
-}
+export type {
+  GridHead,
+  GridHeadHookResult,
+  GridHeadId,
+  GridHeadInput,
+  GridHeadObject,
+  NormalizedGridHead,
+  ResolvedGridHead,
+} from "./head.types.js";
 
 export function useRowHead<
   TCell,
@@ -48,8 +29,10 @@ export function useRowHead<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   position: GridPosition<TColumnId, TRowId>,
 ): GridHeadHookResult<TRowHead>;
 export function useRowHead<
@@ -58,8 +41,10 @@ export function useRowHead<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   rowId: TRowId,
 ): GridHeadHookResult<TRowHead>;
 export function useRowHead<
@@ -68,8 +53,10 @@ export function useRowHead<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   rowIdOrPosition: TRowId | GridPosition<TColumnId, TRowId>,
 ): GridHeadHookResult<TRowHead> {
   const resolvedRowId = Array.isArray(rowIdOrPosition)
@@ -123,8 +110,10 @@ export function useColumnHead<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   position: GridPosition<TColumnId, TRowId>,
 ): GridHeadHookResult<TColumnHead>;
 export function useColumnHead<
@@ -133,8 +122,10 @@ export function useColumnHead<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   columnId: TColumnId,
 ): GridHeadHookResult<TColumnHead>;
 export function useColumnHead<
@@ -143,8 +134,10 @@ export function useColumnHead<
   TColumnId extends string,
   TRowHead extends GridHead<TRowId>,
   TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   columnIdOrPosition: TColumnId | GridPosition<TColumnId, TRowId>,
 ): GridHeadHookResult<TColumnHead> {
   const resolvedColumnId = Array.isArray(columnIdOrPosition)
