@@ -10,15 +10,7 @@ export function reorderRow<
   TStateCell,
   TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<
-    TCell,
-    TRowId,
-    TColumnId,
-    TRowHead,
-    TColumnHead,
-    TStateCell,
-    TState
-  >,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   activeRowId: TRowId | string,
   overRowId: TRowId | string,
 ) {
@@ -52,15 +44,7 @@ export function reorderColumn<
   TStateCell,
   TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
-  currentGrid: Grid<
-    TCell,
-    TRowId,
-    TColumnId,
-    TRowHead,
-    TColumnHead,
-    TStateCell,
-    TState
-  >,
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
   activeColumnId: TColumnId | string,
   overColumnId: TColumnId | string,
 ) {

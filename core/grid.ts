@@ -1012,4 +1012,3 @@ function readGridHeadLabel(head: GridRecord, id: string) {
 
   return id;
 }
-
