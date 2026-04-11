@@ -177,22 +177,24 @@ export function MarketingRowTotal() {
 
 ## Reordering rows and columns
 
+`useGrid` now stays focused on reading the ordered row and column ids. Mutating helpers such as `reorderRow` and `reorderColumn` live separately so the helper surface can grow later without bloating the base hook.
+
 ```tsx
-import { useGrid } from 'zubin-grid'
+import { reorderColumn, reorderRow, useGrid } from 'zubin-grid'
 
 export function GridToolbar() {
-  const { rows, cols, reorderRow, reorderColumn } = useGrid(budgetGrid)
+  const { rows, cols } = useGrid(budgetGrid)
 
   return (
     <div>
       <div>Rows: {rows.join(', ')}</div>
       <div>Columns: {cols.join(', ')}</div>
 
-      <button onClick={() => reorderRow('ops', 'marketing')}>
+      <button onClick={() => reorderRow(budgetGrid, 'ops', 'marketing')}>
         Move ops above marketing
       </button>
 
-      <button onClick={() => reorderColumn('actual', 'planned')}>
+      <button onClick={() => reorderColumn(budgetGrid, 'actual', 'planned')}>
         Move actual first
       </button>
     </div>
@@ -331,7 +333,9 @@ const persistedWithCustomAdapter = grid<SalesSchema>(initialState, {
 
 ### Grid helpers
 
-- `useGrid(grid)`
+- `useGrid(grid)` - reads the current ordered row and column ids
+- `reorderRow(grid, activeRowId, overRowId)`
+- `reorderColumn(grid, activeColumnId, overColumnId)`
 - `createGridKey(rowId, columnId)`
 - `grid.getState()`
 - `grid.upsertRow(...)`
@@ -347,6 +351,8 @@ Use the root package for most cases:
 import {
   cell,
   grid,
+  reorderColumn,
+  reorderRow,
   useCell,
   useCellValue,
   useRowHead,
@@ -361,6 +367,7 @@ Subpath imports are also available:
 
 ```ts
 import { grid } from 'zubin-grid/grid'
+import { reorderColumn } from 'zubin-grid/helpers'
 import { useRowTail } from 'zubin-grid/tail'
 ```
 

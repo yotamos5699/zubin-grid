@@ -142,11 +142,6 @@ export interface Grid<
 export interface GridAxisIds<TRowId extends string, TColumnId extends string> {
   rows: readonly TRowId[];
   cols: readonly TColumnId[];
-  reorderRow: (activeRowId: TRowId | string, overRowId: TRowId | string) => boolean;
-  reorderColumn: (
-    activeColumnId: TColumnId | string,
-    overColumnId: TColumnId | string,
-  ) => boolean;
 }
 
 export type GridMatrixSnapshot<

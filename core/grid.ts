@@ -782,57 +782,6 @@ export function useGrid<
   return {
     rows: currentGrid.rowHeaders,
     cols: currentGrid.colHeaders,
-    reorderRow: (activeRowId: TRowId | string, overRowId: TRowId | string) => {
-      const nextOrderedRowIds = reorderAxisIds(
-        currentGrid.rowHeaders,
-        activeRowId,
-        overRowId,
-      );
-
-      if (nextOrderedRowIds === currentGrid.rowHeaders) {
-        return false;
-      }
-
-      nextOrderedRowIds.forEach((rowId, index) => {
-        currentGrid.updateRowHead(rowId, (currentHead): TRowHead => {
-          return currentHead.order === index
-            ? currentHead
-            : {
-                ...currentHead,
-                order: index,
-              };
-        });
-      });
-
-      return true;
-    },
-    reorderColumn: (
-      activeColumnId: TColumnId | string,
-      overColumnId: TColumnId | string,
-    ) => {
-      const nextOrderedColumnIds = reorderAxisIds(
-        currentGrid.colHeaders,
-        activeColumnId,
-        overColumnId,
-      );
-
-      if (nextOrderedColumnIds === currentGrid.colHeaders) {
-        return false;
-      }
-
-      nextOrderedColumnIds.forEach((columnId, index) => {
-        currentGrid.updateColumnHead(columnId, (currentHead): TColumnHead => {
-          return currentHead.order === index
-            ? currentHead
-            : {
-                ...currentHead,
-                order: index,
-              };
-        });
-      });
-
-      return true;
-    },
   };
 }
 
@@ -1064,23 +1013,3 @@ function readGridHeadLabel(head: GridRecord, id: string) {
   return id;
 }
 
-function reorderAxisIds<TId extends string>(
-  items: readonly TId[],
-  activeId: TId | string,
-  overId: TId | string,
-) {
-  const fromIndex = items.findIndex((item) => item === activeId);
-  const toIndex = items.findIndex((item) => item === overId);
-
-  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
-    return items;
-  }
-
-  const nextItems = items.slice();
-  const movedItem = nextItems[fromIndex];
-
-  nextItems.splice(fromIndex, 1);
-  nextItems.splice(toIndex, 0, movedItem);
-
-  return nextItems;
-}

@@ -19,6 +19,8 @@ export type {
 
 export { defaultGridPersistAdapter } from "./core/gridPersist.js";
 
+export { reorderColumn, reorderRow } from "./core/helpers.js";
+
 export {
   assertHeadId,
   createHeadCellMap,
