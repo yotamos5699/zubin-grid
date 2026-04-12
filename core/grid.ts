@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 import { cell } from "./cell.js";
-import { createGridPersistController, defaultGridPersistAdapter } from "./persist.js";
+import {
+  createGridPersistController,
+  defaultGridPersistAdapter,
+} from "./gridPersist.js";
 
 import type { Cell, Subscriber, Updater } from "./types/cell.types.js";
 import type {
@@ -13,13 +16,10 @@ import type {
   Grid,
   GridAxisIds,
   GridColumnIdOf,
-  GridColumnHeadOf,
   GridInitialCellEntry,
   GridPersistOption,
-  GridPosition,
   GridRecord,
   GridRowIdOf,
-  GridRowHeadOf,
   GridSchemaOptions,
   GridSetMode,
   GridState,
@@ -57,7 +57,11 @@ import {
 import { createTailCellMap, getTailCell, setTailCellResult } from "./tail.js";
 
 import type { GridHead } from "./types/head.types.js";
-import type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./types/tail.types.js";
+import type {
+  GridAxisCell,
+  GridAxisTailUpdater,
+  GridTailState,
+} from "./types/tail.types.js";
 
 export type {
   CreateSubGridOptions,
@@ -218,10 +222,7 @@ export function createSubGrid<
     TColumnId,
     TRowHead,
     TColumnHead
-  >(
-    cellsOrOptionsOrPersist,
-    persist,
-  );
+  >(cellsOrOptionsOrPersist, persist);
   const parentState = parentGrid.getState();
   const stateAdapter = createGridStateCellAdapter<TCell, TRowId, TColumnId>();
   const resolvedInitialCells = assertGridStateCellsWithinAxes(

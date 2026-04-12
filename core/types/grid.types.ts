@@ -2,9 +2,9 @@ import type { Cell, Subscriber, Updater } from "./cell.types.js";
 import type { GridHead } from "./head.types.js";
 import type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./tail.types.js";
 
-export type { GridPersistAdapter, GridPersistOption } from "./persist.types.js";
+export type { GridPersistAdapter, GridPersistOption } from "./gridPersist.types.js";
 
-import type { GridPersistOption } from "./persist.types.js";
+import type { GridPersistOption } from "./gridPersist.types.js";
 
 export type GridRecord = Record<string, unknown>;
 

@@ -26,7 +26,7 @@ export type {
   UseGridOptions,
 } from "./core/types/grid.types.js";
 
-export { defaultGridPersistAdapter } from "./core/persist.js";
+export { defaultGridPersistAdapter } from "./core/gridPersist.js";
 
 export {
   assertHeadId,
