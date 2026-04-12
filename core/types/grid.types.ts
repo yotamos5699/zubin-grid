@@ -2,9 +2,9 @@ import type { Cell, Subscriber, Updater } from "./cell.types.js";
 import type { GridHead } from "./head.types.js";
 import type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./tail.types.js";
 
-export type { GridPersistAdapter, GridPersistOption } from "./gridPersist.types.js";
+export type { GridPersistAdapter, GridPersistOption } from "./persist.types.js";
 
-import type { GridPersistOption } from "./gridPersist.types.js";
+import type { GridPersistOption } from "./persist.types.js";
 
 export type GridRecord = Record<string, unknown>;
 
@@ -351,3 +351,82 @@ export interface GridStateAdapter<
   };
   serializeCell: (rowId: TRowId, columnId: TColumnId, value: TCell) => TStateCell;
 }
+
+export type BroadSchemaRowHead<
+  TState extends GridState<GridRecord, GridRecord, GridRecord>,
+> = SchemaRow<TState> & GridHead<string>;
+
+export type BroadSchemaColumnHead<
+  TState extends GridState<GridRecord, GridRecord, GridRecord>,
+> = SchemaColumn<TState> & GridHead<string>;
+
+export type BroadSchemaSnapshot<
+  TState extends GridState<GridRecord, GridRecord, GridRecord>,
+> = GridState<
+  SchemaCell<TState>,
+  BroadSchemaRowHead<TState>,
+  BroadSchemaColumnHead<TState>
+>;
+
+export interface InternalGridCellSetter<
+  TCell,
+  TRowId extends string,
+  TColumnId extends string,
+> {
+  __setCellValue: (rowId: TRowId, columnId: TColumnId, newValue: TCell) => void;
+}
+
+export type WritableGrid<
+  TCell,
+  TRowId extends string,
+  TColumnId extends string,
+  TRowHead extends GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
+> = Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState> &
+  InternalGridCellSetter<TCell, TRowId, TColumnId>;
+
+export type AnyGrid = Grid<any, any, any, any, any, any, any>;
+
+export type GridRowIdOf<TGrid extends AnyGrid> =
+  TGrid extends Grid<any, infer TRowId, any, any, any, any, any>
+    ? Extract<TRowId, string>
+    : never;
+
+export type GridColumnIdOf<TGrid extends AnyGrid> =
+  TGrid extends Grid<any, any, infer TColumnId, any, any, any, any>
+    ? Extract<TColumnId, string>
+    : never;
+
+export type GridRowHeadOf<TGrid extends AnyGrid> =
+  TGrid extends Grid<any, any, any, infer TRowHead, any, any, any> ? TRowHead : never;
+
+export type GridColumnHeadOf<TGrid extends AnyGrid> =
+  TGrid extends Grid<any, any, any, any, infer TColumnHead, any, any>
+    ? TColumnHead
+    : never;
+
+export type ParentSubGridState<TCell, TParentGrid extends AnyGrid> = SubGridState<
+  TCell,
+  GridRowIdOf<TParentGrid>,
+  GridColumnIdOf<TParentGrid>,
+  GridRowHeadOf<TParentGrid>,
+  GridColumnHeadOf<TParentGrid>
+>;
+
+export type ParentSubGrid<TCell, TParentGrid extends AnyGrid> = SubGrid<
+  TCell,
+  GridRowIdOf<TParentGrid>,
+  GridColumnIdOf<TParentGrid>,
+  GridRowHeadOf<TParentGrid>,
+  GridColumnHeadOf<TParentGrid>
+>;
+
+export type ParentSubGridOptions<TCell, TParentGrid extends AnyGrid> = CreateSubGridOptions<
+  TCell,
+  GridRowIdOf<TParentGrid>,
+  GridColumnIdOf<TParentGrid>,
+  GridRowHeadOf<TParentGrid>,
+  GridColumnHeadOf<TParentGrid>
+>;

@@ -1,22 +1,34 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 import { cell } from "./cell.js";
-import { createGridPersistController, defaultGridPersistAdapter } from "./gridPersist.js";
+import { createGridPersistController, defaultGridPersistAdapter } from "./persist.js";
 
 import type { Cell, Subscriber, Updater } from "./types/cell.types.js";
 import type {
+  AnyGrid,
+  BroadSchemaColumnHead,
+  BroadSchemaRowHead,
+  BroadSchemaSnapshot,
   CreateSubGridOptions,
   Grid,
   GridAxisIds,
+  GridColumnIdOf,
+  GridColumnHeadOf,
   GridInitialCellEntry,
   GridPersistOption,
   GridPosition,
   GridRecord,
+  GridRowIdOf,
+  GridRowHeadOf,
   GridSchemaOptions,
   GridSetMode,
   GridState,
   GridStateAdapter,
   GridStateCell,
+  InternalGridCellSetter,
+  ParentSubGrid,
+  ParentSubGridOptions,
+  ParentSubGridState,
   GridStateInitializer,
   GridSubscriber,
   GridUpdateDiff,
@@ -70,67 +82,6 @@ export type {
   SubGridState,
   UseGridOptions,
 } from "./types/grid.types.js";
-
-type BroadSchemaRowHead<TState extends GridState<GridRecord, GridRecord, GridRecord>> =
-  SchemaRow<TState> & GridHead<string>;
-
-type BroadSchemaColumnHead<TState extends GridState<GridRecord, GridRecord, GridRecord>> =
-  SchemaColumn<TState> & GridHead<string>;
-
-type BroadSchemaSnapshot<TState extends GridState<GridRecord, GridRecord, GridRecord>> =
-  GridState<
-    SchemaCell<TState>,
-    BroadSchemaRowHead<TState>,
-    BroadSchemaColumnHead<TState>
-  >;
-
-type InternalGridCellSetter<TCell, TRowId extends string, TColumnId extends string> = {
-  __setCellValue: (rowId: TRowId, columnId: TColumnId, newValue: TCell) => void;
-};
-
-type AnyGrid = Grid<any, any, any, any, any, any, any>;
-
-type GridRowIdOf<TGrid extends AnyGrid> =
-  TGrid extends Grid<any, infer TRowId, any, any, any, any, any>
-    ? Extract<TRowId, string>
-    : never;
-
-type GridColumnIdOf<TGrid extends AnyGrid> =
-  TGrid extends Grid<any, any, infer TColumnId, any, any, any, any>
-    ? Extract<TColumnId, string>
-    : never;
-
-type GridRowHeadOf<TGrid extends AnyGrid> =
-  TGrid extends Grid<any, any, any, infer TRowHead, any, any, any> ? TRowHead : never;
-
-type GridColumnHeadOf<TGrid extends AnyGrid> =
-  TGrid extends Grid<any, any, any, any, infer TColumnHead, any, any>
-    ? TColumnHead
-    : never;
-
-type ParentSubGridState<TCell, TParentGrid extends AnyGrid> = SubGridState<
-  TCell,
-  GridRowIdOf<TParentGrid>,
-  GridColumnIdOf<TParentGrid>,
-  GridRowHeadOf<TParentGrid>,
-  GridColumnHeadOf<TParentGrid>
->;
-
-type ParentSubGrid<TCell, TParentGrid extends AnyGrid> = SubGrid<
-  TCell,
-  GridRowIdOf<TParentGrid>,
-  GridColumnIdOf<TParentGrid>,
-  GridRowHeadOf<TParentGrid>,
-  GridColumnHeadOf<TParentGrid>
->;
-
-type ParentSubGridOptions<TCell, TParentGrid extends AnyGrid> = CreateSubGridOptions<
-  TCell,
-  GridRowIdOf<TParentGrid>,
-  GridColumnIdOf<TParentGrid>,
-  GridRowHeadOf<TParentGrid>,
-  GridColumnHeadOf<TParentGrid>
->;
 
 export function grid<TState extends GridState<GridRecord, GridRecord, GridRecord>>(
   source: GridStateInitializer<TState>,
@@ -261,7 +212,13 @@ export function createSubGrid<
     SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>
   >,
 ): SubGrid<TCell, TRowId, TColumnId, TRowHead, TColumnHead> {
-  const { initialCells, persistOption } = resolveCreateSubGridArgs(
+  const { initialCells, persistOption } = resolveCreateSubGridArgs<
+    TCell,
+    TRowId,
+    TColumnId,
+    TRowHead,
+    TColumnHead
+  >(
     cellsOrOptionsOrPersist,
     persist,
   );
@@ -284,7 +241,12 @@ export function createSubGrid<
   >(
     parentState.rows,
     parentState.columns,
-    createGridInitialCellsFromState(resolvedInitialCells, stateAdapter),
+    createGridInitialCellsFromState<
+      TCell,
+      TRowId,
+      TColumnId,
+      GridStateCell<TCell, TRowId, TColumnId>
+    >(resolvedInitialCells, stateAdapter),
     stateAdapter,
     createSubGridPersistOption(parentGrid, persistOption),
   );
@@ -2145,7 +2107,7 @@ function createSubGridPersistOption<
   return [
     storageKey,
     {
-      get: async (nextStorageKey) => {
+      get: async (nextStorageKey: string) => {
         const persistedState = await Promise.resolve(resolvedAdapter.get(nextStorageKey));
 
         if (persistedState === null) {
@@ -2153,7 +2115,11 @@ function createSubGridPersistOption<
         }
 
         try {
-          const normalizedState = normalizeGridStateInput(persistedState);
+          const normalizedState = normalizeGridStateInput<
+            GridStateCell<TCell, TRowId, TColumnId>,
+            TRowHead,
+            TColumnHead
+          >(persistedState);
           const parentState = parentGrid.getState();
 
           return createSubGridState(
@@ -2165,7 +2131,10 @@ function createSubGridPersistOption<
           return null;
         }
       },
-      set: (nextStorageKey, nextState) => {
+      set: (
+        nextStorageKey: string,
+        nextState: SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+      ) => {
         const parentState = parentGrid.getState();
 
         return resolvedAdapter.set(
@@ -2173,7 +2142,7 @@ function createSubGridPersistOption<
           createSubGridState(parentState.rows, parentState.columns, nextState.cells),
         );
       },
-      remove: (nextStorageKey) => resolvedAdapter.remove(nextStorageKey),
+      remove: (nextStorageKey: string) => resolvedAdapter.remove(nextStorageKey),
     },
   ];
 }

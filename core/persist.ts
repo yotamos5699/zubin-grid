@@ -3,9 +3,9 @@ import type {
   GridPersistControllerOptions,
   GridPersistOption,
   ResolvedGridPersistConfig,
-} from "./types/gridPersist.types.js";
+} from "./types/persist.types.js";
 
-export type { GridPersistAdapter, GridPersistOption } from "./types/gridPersist.types.js";
+export type { GridPersistAdapter, GridPersistOption } from "./types/persist.types.js";
 
 const GRID_PERSIST_DB_NAME = "zubin-grid";
 const GRID_PERSIST_STORE_NAME = "grid-state";

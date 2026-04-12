@@ -1,22 +1,10 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 import type { Cell, CellInitializer, Subscriber, Updater } from "./types/cell.types.js";
-import type { Grid, GridPosition, GridState } from "./types/grid.types.js";
+import type { Grid, GridPosition, GridState, WritableGrid } from "./types/grid.types.js";
 import type { GridHead } from "./types/head.types.js";
 
 export type { Cell, Subscriber, Updater } from "./types/cell.types.js";
-
-type GridWithCellSetter<
-  TCell,
-  TRowId extends string,
-  TColumnId extends string,
-  TRowHead extends GridHead<TRowId>,
-  TColumnHead extends GridHead<TColumnId>,
-  TStateCell,
-  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
-> = Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState> & {
-  __setCellValue: (rowId: TRowId, columnId: TColumnId, newValue: TCell) => void;
-};
 
 export function cell<TCell>(initialValue: TCell | CellInitializer<TCell>): Cell<TCell> {
   let value = typeof initialValue === "function" ? (null as TCell) : initialValue;
@@ -117,7 +105,7 @@ export function useCell<
     isGrid(cellOrGrid) && resolvedRowId !== undefined && resolvedColumnId !== undefined
       ? (newValue: TCell) =>
           (
-            cellOrGrid as GridWithCellSetter<
+            cellOrGrid as WritableGrid<
               TCell,
               TRowId,
               TColumnId,
