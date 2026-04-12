@@ -6,6 +6,18 @@ import type { GridHead } from "./head.types.js";
 
 export type { Cell, Subscriber, Updater } from "./cell.types.js";
 
+type GridWithCellSetter<
+  TCell,
+  TRowId extends string,
+  TColumnId extends string,
+  TRowHead extends GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead>,
+> = Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState> & {
+  __setCellValue: (rowId: TRowId, columnId: TColumnId, newValue: TCell) => void;
+};
+
 export function cell<TCell>(initialValue: TCell | CellInitializer<TCell>): Cell<TCell> {
   let value = typeof initialValue === "function" ? (null as TCell) : initialValue;
 
@@ -104,7 +116,17 @@ export function useCell<
   const setValue =
     isGrid(cellOrGrid) && resolvedRowId !== undefined && resolvedColumnId !== undefined
       ? (newValue: TCell) =>
-          cellOrGrid.setValue(resolvedRowId, resolvedColumnId, newValue)
+          (
+            cellOrGrid as GridWithCellSetter<
+              TCell,
+              TRowId,
+              TColumnId,
+              TRowHead,
+              TColumnHead,
+              TStateCell,
+              TState
+            >
+          ).__setCellValue(resolvedRowId, resolvedColumnId, newValue)
       : currentCell.set;
 
   return [useSyncExternalStore(subscribe, getSnapshot), setValue] as const;

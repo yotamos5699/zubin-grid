@@ -222,7 +222,7 @@ export const demoActions: readonly DemoAction[] = [
       const currentCell = currentGrid.getValue("oranges", "store");
       const nextValue = currentCell.value + 3;
 
-      currentGrid.setValue("oranges", "store", {
+      currentGrid.upsertCell({
         ...currentCell,
         value: nextValue,
       });

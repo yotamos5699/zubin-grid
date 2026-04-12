@@ -172,10 +172,12 @@ export function setTailCellResult(
   const nextTailState = createTailState(nextValue);
 
   if (isSameTailState(currentTailState, nextTailState)) {
-    return;
+    return false;
   }
 
   tailCell.set(nextTailState);
+
+  return true;
 }
 
 export function readReactiveTailValue<TTail>(tailState: GridTailState<TTail>) {

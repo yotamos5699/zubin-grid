@@ -4,6 +4,7 @@ import {
   createGridKey,
   useCell,
   useColumnHead,
+  useGrid,
   useColumnTail,
   useRowHead,
   useRowTail,
@@ -135,8 +136,7 @@ export function TinyExampleApp() {
   const [activityLog, setActivityLog] = useState<string[]>([
     buildLogEntry("Ready. Try the buttons or edit cells directly."),
   ]);
-  const rows = currentGrid.rowHeaders;
-  const cols = currentGrid.colHeaders;
+  const { rows, cols } = useGrid(currentGrid);
 
   const recordMutation = (message: string) => {
     setActivityLog((previousLog) =>

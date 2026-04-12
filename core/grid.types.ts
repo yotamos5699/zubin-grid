@@ -13,6 +13,38 @@ import type { GridPersistOption } from "./gridPersist.types.js";
 
 export type GridRecord = Record<string, unknown>;
 
+export type GridSetMode = "update" | "replace";
+
+export type GridUpdateType =
+  | "grid"
+  | "cells"
+  | "rows"
+  | "columns"
+  | "row-head"
+  | "column-head"
+  | "row-tail"
+  | "column-tail";
+
+export type GridUpdateAction = "clear" | "replace" | "recompute" | "update" | "upsert";
+
+export type GridUpdateSource =
+  | "cell.set"
+  | "clearCells"
+  | "clearGrid"
+  | "recomputeColumnTail"
+  | "recomputeRowTail"
+  | "setGrid"
+  | "updateColumnHead"
+  | "updateColumnTail"
+  | "updateRowHead"
+  | "updateRowTail"
+  | "upsertCell"
+  | "upsertCells"
+  | "upsertColumn"
+  | "upsertColumns"
+  | "upsertRow"
+  | "upsertRows";
+
 export interface GridState<TCell, TRow = GridRecord, TColumn = GridRecord> {
   cells: readonly TCell[];
   rows: readonly TRow[];
@@ -98,18 +130,33 @@ export interface Grid<
   readonly rowHeaders: readonly TRowId[];
   readonly colHeaders: readonly TColumnId[];
   getState: () => TState;
+  setGrid: (nextState: TState | Partial<TState>, mode?: GridSetMode) => void;
   getCell: (rowId: TRowId, columnId: TColumnId) => Cell<TCell>;
   getValue: (rowId: TRowId, columnId: TColumnId) => TCell;
-  setValue: (rowId: TRowId, columnId: TColumnId, newValue: TCell) => void;
   hasCell: (rowId: TRowId, columnId: TColumnId) => boolean;
   getRowHead: (rowId: TRowId) => TRowHead;
   getColumnHead: (columnId: TColumnId) => TColumnHead;
   updateRowHead: (rowId: TRowId, nextRowHead: Updater<TRowHead>) => void;
   updateColumnHead: (columnId: TColumnId, nextColumnHead: Updater<TColumnHead>) => void;
   upsertRow: (nextRowHead: GridUpsertHead<TRowHead>) => void;
+  upsertRows: (nextRowHeads: readonly GridUpsertHead<TRowHead>[]) => void;
   upsertColumn: (nextColumnHead: GridUpsertHead<TColumnHead>) => void;
+  upsertColumns: (nextColumnHeads: readonly GridUpsertHead<TColumnHead>[]) => void;
   upsertCell: (nextCell: TStateCell) => void;
   upsertCells: (nextCells: readonly TStateCell[]) => void;
+  clearCells: () => void;
+  clearGrid: () => void;
+  subscribeGrid: (
+    callback: GridSubscriber<
+      TCell,
+      TRowId,
+      TColumnId,
+      TRowHead,
+      TColumnHead,
+      TStateCell,
+      TState
+    >,
+  ) => () => void;
   subscribeRowHead: (rowId: TRowId, callback: Subscriber) => () => void;
   subscribeColumnHead: (columnId: TColumnId, callback: Subscriber) => () => void;
   getRowCells: (rowId: TRowId) => readonly GridAxisCell<TCell, TRowId, TColumnId>[];
@@ -142,6 +189,71 @@ export interface Grid<
 export interface GridAxisIds<TRowId extends string, TColumnId extends string> {
   rows: readonly TRowId[];
   cols: readonly TColumnId[];
+}
+
+export interface GridUpdateDiff<
+  TRowId extends string = string,
+  TColumnId extends string = string,
+  TRowHead extends GridHead<TRowId> = GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId> = GridHead<TColumnId>,
+  TStateCell = unknown,
+> {
+  type: GridUpdateType;
+  action: GridUpdateAction;
+  source: GridUpdateSource;
+  mode?: GridSetMode;
+  rowIds?: readonly TRowId[];
+  columnIds?: readonly TColumnId[];
+  rowTailIds?: readonly TRowId[];
+  columnTailIds?: readonly TColumnId[];
+  cellKeys?: readonly string[];
+  rows?: readonly TRowHead[];
+  previousRows?: readonly TRowHead[];
+  columns?: readonly TColumnHead[];
+  previousColumns?: readonly TColumnHead[];
+  cells?: readonly TStateCell[];
+  previousCells?: readonly TStateCell[];
+}
+
+export type GridSubscriber<
+  TCell,
+  TRowId extends string = string,
+  TColumnId extends string = string,
+  TRowHead extends GridHead<TRowId> = GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId> = GridHead<TColumnId>,
+  TStateCell = GridStateCell<TCell, TRowId, TColumnId>,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead> = GridState<
+    TStateCell,
+    TRowHead,
+    TColumnHead
+  >,
+> = (
+  currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
+  diff: GridUpdateDiff<TRowId, TColumnId, TRowHead, TColumnHead, TStateCell>,
+) => void;
+
+export interface UseGridOptions<
+  TCell,
+  TRowId extends string = string,
+  TColumnId extends string = string,
+  TRowHead extends GridHead<TRowId> = GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId> = GridHead<TColumnId>,
+  TStateCell = GridStateCell<TCell, TRowId, TColumnId>,
+  TState extends GridState<TStateCell, TRowHead, TColumnHead> = GridState<
+    TStateCell,
+    TRowHead,
+    TColumnHead
+  >,
+> {
+  onGridUpdate?: GridSubscriber<
+    TCell,
+    TRowId,
+    TColumnId,
+    TRowHead,
+    TColumnHead,
+    TStateCell,
+    TState
+  >;
 }
 
 export type GridMatrixSnapshot<

@@ -177,10 +177,11 @@ export function MarketingRowTotal() {
 
 ## Reordering rows and columns
 
-`useGrid` now stays focused on reading the ordered row and column ids. Mutating helpers such as `reorderRow` and `reorderColumn` live separately so the helper surface can grow later without bloating the base hook.
+`useGrid` now stays focused on reading the ordered row and column ids. Mutating helpers such as `reorderRow` and `reorderColumn` live on the `zubin-grid/helpers` subpath so the root package stays focused on the core store and hook primitives.
 
 ```tsx
-import { reorderColumn, reorderRow, useGrid } from 'zubin-grid'
+import { useGrid } from 'zubin-grid'
+import { reorderColumn, reorderRow } from 'zubin-grid/helpers'
 
 export function GridToolbar() {
   const { rows, cols } = useGrid(budgetGrid)
@@ -201,6 +202,49 @@ export function GridToolbar() {
   )
 }
 ```
+
+`useGrid` also accepts an optional `onGridUpdate` callback so React components can listen to every grid mutation with the current grid reference plus a structured diff.
+
+```tsx
+const { rows, cols } = useGrid(budgetGrid, {
+  onGridUpdate: (nextGrid, diff) => {
+    console.log(nextGrid.getState(), diff)
+  },
+})
+```
+
+Outside React, use `budgetGrid.subscribeGrid((grid, diff) => { ... })`.
+
+## Full-grid updates and reset helpers
+
+Use `setGrid` when you want to work with full snapshots instead of one row, column, or cell at a time.
+
+```ts
+salesGrid.setGrid({
+  rows: [{ id: 'west', label: 'West', order: 2 }],
+  columns: [{ id: 'mar', label: 'March', order: 2 }],
+  cells: [{ rowId: 'west', columnId: 'mar', value: 21 }],
+}, 'update')
+
+salesGrid.setGrid({
+  rows: [],
+  columns: [],
+  cells: [],
+}, 'replace')
+```
+
+- `"update"` merges incoming rows, columns, and cells into the existing grid.
+- `"replace"` swaps the current rows, columns, and cells with the incoming snapshot.
+
+Reset helpers are available for the common clear flows:
+
+```ts
+salesGrid.clearCells()
+salesGrid.clearGrid()
+```
+
+- `clearCells()` removes current cell entries while preserving row/column heads and tail registrations.
+- `clearGrid()` clears rows, columns, cells, and tail registrations.
 
 ## Creating a grid from JSON-friendly state
 
@@ -267,8 +311,8 @@ const bootstrappedSalesGrid = grid<SalesSchema>({}, {
 ```ts
 const snapshot = salesGrid.getState()
 
-salesGrid.upsertRow({ id: 'west', label: 'West' })
-salesGrid.upsertColumn({ id: 'mar', label: 'March' })
+salesGrid.upsertRows([{ id: 'west', label: 'West' }])
+salesGrid.upsertColumns([{ id: 'mar', label: 'March' }])
 salesGrid.upsertCell({ rowId: 'west', columnId: 'mar', value: 21 })
 ```
 
@@ -333,15 +377,24 @@ const persistedWithCustomAdapter = grid<SalesSchema>(initialState, {
 
 ### Grid helpers
 
-- `useGrid(grid)` - reads the current ordered row and column ids
-- `reorderRow(grid, activeRowId, overRowId)`
-- `reorderColumn(grid, activeColumnId, overColumnId)`
+- `useGrid(grid, { onGridUpdate })` - reads the current ordered row and column ids and can subscribe to every grid mutation
 - `createGridKey(rowId, columnId)`
 - `grid.getState()`
+- `grid.setGrid(nextState, mode?)`
 - `grid.upsertRow(...)`
+- `grid.upsertRows(...)`
 - `grid.upsertColumn(...)`
+- `grid.upsertColumns(...)`
 - `grid.upsertCell(...)`
 - `grid.upsertCells(...)`
+- `grid.clearCells()`
+- `grid.clearGrid()`
+- `grid.subscribeGrid((grid, diff) => { ... })`
+
+### Helper subpath
+
+- `reorderRow(grid, activeRowId, overRowId)` from `zubin-grid/helpers`
+- `reorderColumn(grid, activeColumnId, overColumnId)` from `zubin-grid/helpers`
 
 ## Imports
 
@@ -351,8 +404,6 @@ Use the root package for most cases:
 import {
   cell,
   grid,
-  reorderColumn,
-  reorderRow,
   useCell,
   useCellValue,
   useRowHead,
@@ -367,7 +418,7 @@ Subpath imports are also available:
 
 ```ts
 import { grid } from 'zubin-grid/grid'
-import { reorderColumn } from 'zubin-grid/helpers'
+import { reorderColumn, reorderRow } from 'zubin-grid/helpers'
 import { useRowTail } from 'zubin-grid/tail'
 ```
 

@@ -11,15 +11,20 @@ export type {
   GridPosition,
   GridRows,
   GridSchemaOptions,
+  GridSetMode,
   GridState,
   GridStateCell,
   GridStateInitializer,
+  GridSubscriber,
+  GridUpdateAction,
+  GridUpdateDiff,
+  GridUpdateSource,
+  GridUpdateType,
   GridUpsertHead,
+  UseGridOptions,
 } from "./core/grid.types.js";
 
 export { defaultGridPersistAdapter } from "./core/gridPersist.js";
-
-export { reorderColumn, reorderRow } from "./core/helpers.js";
 
 export {
   assertHeadId,

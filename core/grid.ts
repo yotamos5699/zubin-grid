@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+
 import { cell } from "./cell.js";
 import { createGridPersistController } from "./gridPersist.js";
 
@@ -12,10 +14,13 @@ import type {
   GridPosition,
   GridRecord,
   GridSchemaOptions,
+  GridSetMode,
   GridState,
   GridStateAdapter,
   GridStateCell,
   GridStateInitializer,
+  GridSubscriber,
+  GridUpdateDiff,
   GridUpsertHead,
   SchemaCell,
   SchemaCellValue,
@@ -26,6 +31,7 @@ import type {
   SchemaRowHead,
   SchemaRowId,
   SchemaSnapshot,
+  UseGridOptions,
 } from "./grid.types.js";
 
 import {
@@ -55,10 +61,17 @@ export type {
   GridPosition,
   GridRows,
   GridSchemaOptions,
+  GridSetMode,
   GridState,
   GridStateCell,
   GridStateInitializer,
+  GridSubscriber,
+  GridUpdateAction,
+  GridUpdateDiff,
+  GridUpdateSource,
+  GridUpdateType,
   GridUpsertHead,
+  UseGridOptions,
 } from "./grid.types.js";
 
 type BroadSchemaRowHead<TState extends GridState<GridRecord, GridRecord, GridRecord>> =
@@ -73,6 +86,10 @@ type BroadSchemaSnapshot<TState extends GridState<GridRecord, GridRecord, GridRe
     BroadSchemaRowHead<TState>,
     BroadSchemaColumnHead<TState>
   >;
+
+type InternalGridCellSetter<TCell, TRowId extends string, TColumnId extends string> = {
+  __setCellValue: (rowId: TRowId, columnId: TColumnId, newValue: TCell) => void;
+};
 
 export function grid<
   TCell,
@@ -225,6 +242,10 @@ function createGridStore<
     GridAxisTailUpdater<TCell, TRowId, TColumnId, unknown>
   >();
   const cellsMap = new Map<string, Cell<TCell>>();
+  const cellSubscriptions = new Map<string, () => void>();
+  const gridSubscribers = new Set<
+    GridSubscriber<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>
+  >();
 
   let nextRowFallbackOrder = initialRows.length;
   let nextColumnFallbackOrder = initialColumns.length;
@@ -232,11 +253,97 @@ function createGridStore<
 
   const getOrderedRowHeads = () => getOrderedHeads(rowHeadCells, rowHeadOrder);
   const getOrderedColumnHeads = () => getOrderedHeads(columnHeadCells, columnHeadOrder);
+  let axisIdsSnapshot: GridAxisIds<TRowId, TColumnId> = {
+    rows: getOrderedRowHeads().map((rowHead) => rowHead.id),
+    cols: getOrderedColumnHeads().map((columnHead) => columnHead.id),
+  };
+
+  let gridApi!: Grid<
+    TCell,
+    TRowId,
+    TColumnId,
+    TRowHead,
+    TColumnHead,
+    TStateCell,
+    TState
+  > &
+    InternalGridCellSetter<TCell, TRowId, TColumnId>;
+
+  const refreshAxisIdsSnapshot = () => {
+    const nextRows = getOrderedRowHeads().map((rowHead) => rowHead.id);
+    const nextCols = getOrderedColumnHeads().map((columnHead) => columnHead.id);
+
+    if (
+      haveSameItems(axisIdsSnapshot.rows, nextRows) &&
+      haveSameItems(axisIdsSnapshot.cols, nextCols)
+    ) {
+      return axisIdsSnapshot;
+    }
+
+    axisIdsSnapshot = {
+      rows: nextRows,
+      cols: nextCols,
+    };
+
+    return axisIdsSnapshot;
+  };
 
   const normalizeCellValue = (rowId: TRowId, columnId: TColumnId, value: TCell) => {
     return stateAdapter.deserializeCell(
       stateAdapter.serializeCell(rowId, columnId, value),
     ).value;
+  };
+
+  const recomputeRowTailInternal = (rowId: TRowId) => {
+    const onRowUpdate = rowTailUpdaters.get(rowId);
+
+    if (!onRowUpdate) return false;
+
+    return setTailCellResult(
+      getTailCell(rowTailCells, rowId, "row"),
+      onRowUpdate(getRowCells(rowId)),
+    );
+  };
+
+  const recomputeColumnTailInternal = (columnId: TColumnId) => {
+    const onColumnUpdate = columnTailUpdaters.get(columnId);
+
+    if (!onColumnUpdate) return false;
+
+    return setTailCellResult(
+      getTailCell(columnTailCells, columnId, "column"),
+      onColumnUpdate(getColumnCells(columnId)),
+    );
+  };
+
+  const recomputeAllRowTails = () => {
+    const changedRowIds: TRowId[] = [];
+
+    getOrderedRowHeads().forEach((rowHead) => {
+      if (recomputeRowTailInternal(rowHead.id)) {
+        changedRowIds.push(rowHead.id);
+      }
+    });
+
+    return changedRowIds;
+  };
+
+  const recomputeAllColumnTails = () => {
+    const changedColumnIds: TColumnId[] = [];
+
+    getOrderedColumnHeads().forEach((columnHead) => {
+      if (recomputeColumnTailInternal(columnHead.id)) {
+        changedColumnIds.push(columnHead.id);
+      }
+    });
+
+    return changedColumnIds;
+  };
+
+  const detachCell = (gridKey: string) => {
+    cellSubscriptions.get(gridKey)?.();
+    cellSubscriptions.delete(gridKey);
+    cellsMap.delete(gridKey);
   };
 
   const attachCell = (rowId: TRowId, columnId: TColumnId, currentCell: Cell<TCell>) => {
@@ -251,14 +358,39 @@ function createGridStore<
       throw new Error(`Duplicate cell for row "${rowId}" and column "${columnId}".`);
 
     cellsMap.set(gridKey, currentCell);
-    currentCell.subscribe(() => {
-      recomputeRowTail(rowId);
-      recomputeColumnTail(columnId);
+    let previousValue = currentCell.get();
 
-      if (isApplyingState) return;
+    const unsubscribe = currentCell.subscribe(() => {
+      const nextValue = currentCell.get();
 
-      markStateChanged();
+      if (isApplyingState) {
+        previousValue = nextValue;
+        return;
+      }
+
+      const rowTailIds = recomputeRowTailInternal(rowId) ? [rowId] : [];
+      const columnTailIds = recomputeColumnTailInternal(columnId) ? [columnId] : [];
+
+      emitGridUpdate(
+        {
+          type: "cells",
+          action: "update",
+          source: "cell.set",
+          rowIds: [rowId],
+          columnIds: [columnId],
+          rowTailIds: toOptionalArray(rowTailIds),
+          columnTailIds: toOptionalArray(columnTailIds),
+          cellKeys: [gridKey],
+          cells: [stateAdapter.serializeCell(rowId, columnId, nextValue)],
+          previousCells: [stateAdapter.serializeCell(rowId, columnId, previousValue)],
+        },
+        true,
+      );
+
+      previousValue = nextValue;
     });
+
+    cellSubscriptions.set(gridKey, unsubscribe);
   };
 
   const getCell = (rowId: TRowId, columnId: TColumnId) => {
@@ -295,40 +427,6 @@ function createGridStore<
 
       return [createAxisCellSnapshot(rowHead.id, columnId)];
     });
-
-  const recomputeRowTail = (rowId: TRowId) => {
-    const onRowUpdate = rowTailUpdaters.get(rowId);
-
-    if (!onRowUpdate) return;
-
-    setTailCellResult(
-      getTailCell(rowTailCells, rowId, "row"),
-      onRowUpdate(getRowCells(rowId)),
-    );
-  };
-
-  const recomputeColumnTail = (columnId: TColumnId) => {
-    const onColumnUpdate = columnTailUpdaters.get(columnId);
-
-    if (!onColumnUpdate) return;
-
-    setTailCellResult(
-      getTailCell(columnTailCells, columnId, "column"),
-      onColumnUpdate(getColumnCells(columnId)),
-    );
-  };
-
-  const recomputeAllRowTails = () => {
-    getOrderedRowHeads().forEach((rowHead) => {
-      recomputeRowTail(rowHead.id);
-    });
-  };
-
-  const recomputeAllColumnTails = () => {
-    getOrderedColumnHeads().forEach((columnHead) => {
-      recomputeColumnTail(columnHead.id);
-    });
-  };
 
   const syncAxisHeads = <TId extends string, THead extends GridHead<TId>>(
     nextHeads: readonly THead[],
@@ -426,7 +524,7 @@ function createGridStore<
 
       [...cellsMap.keys()].forEach((gridKey) => {
         if (!nextCells.has(gridKey)) {
-          cellsMap.delete(gridKey);
+          detachCell(gridKey);
         }
       });
 
@@ -446,8 +544,14 @@ function createGridStore<
       isApplyingState = false;
     }
 
-    recomputeAllRowTails();
-    recomputeAllColumnTails();
+    const rowTailIds = recomputeAllRowTails();
+    const columnTailIds = recomputeAllColumnTails();
+    refreshAxisIdsSnapshot();
+
+    return {
+      rowTailIds,
+      columnTailIds,
+    };
   };
 
   const { hydrate, markStateChanged } = createGridPersistController(persist, {
@@ -456,126 +560,31 @@ function createGridStore<
     isApplyingState: () => isApplyingState,
   });
 
-  initialCells.forEach(({ rowId, columnId, cell: currentCell }) => {
-    attachCell(rowId, columnId, currentCell);
-  });
-
-  hydrate();
-
-  const updateRowHead = (rowId: TRowId, nextRowHead: Updater<TRowHead>) => {
-    const currentHeadCell = getHeadCell(rowHeadCells, rowId, "row");
-    const currentHead = currentHeadCell.get();
-    const resolvedHead = resolveUpdater(nextRowHead, currentHead);
-
-    assertHeadId("row", rowId, resolvedHead.id);
-    currentHeadCell.set(resolvedHead);
-
-    if (currentHead.order === resolvedHead.order) {
-      markStateChanged();
-      return;
-    }
-
-    recomputeAllColumnTails();
-    markStateChanged();
-  };
-
-  const updateColumnHead = (
-    columnId: TColumnId,
-    nextColumnHead: Updater<TColumnHead>,
+  const emitGridUpdate = (
+    diff: GridUpdateDiff<TRowId, TColumnId, TRowHead, TColumnHead, TStateCell>,
+    persistStateChanged = false,
   ) => {
-    const currentHeadCell = getHeadCell(columnHeadCells, columnId, "column");
-    const currentHead = currentHeadCell.get();
-    const resolvedHead = resolveUpdater(nextColumnHead, currentHead);
+    refreshAxisIdsSnapshot();
 
-    assertHeadId("column", columnId, resolvedHead.id);
-    currentHeadCell.set(resolvedHead);
-
-    if (currentHead.order === resolvedHead.order) {
+    if (persistStateChanged) {
       markStateChanged();
-      return;
     }
 
-    recomputeAllRowTails();
-    markStateChanged();
+    [...gridSubscribers].forEach((callback) => {
+      callback(gridApi, diff);
+    });
   };
 
-  const upsertRow = (nextRowHead: GridUpsertHead<TRowHead>) => {
-    const rowHeadLike = nextRowHead as GridRecord & { id: TRowId };
-
-    if (typeof rowHeadLike.id !== "string") {
-      throw new Error("Row header upserts must include a string id.");
-    }
-
-    const currentHeadCell = rowHeadCells.get(rowHeadLike.id);
-    const currentHead = currentHeadCell?.get();
-    const resolvedHead = normalizeUpsertHead(
-      rowHeadLike,
-      currentHead,
-      nextRowFallbackOrder,
-    ) as TRowHead;
-
-    if (currentHeadCell) {
-      currentHeadCell.set(resolvedHead);
-    } else {
-      rowHeadCells.set(resolvedHead.id, cell(resolvedHead));
-      rowTailCells.set(resolvedHead.id, cell(createEmptyTailState()));
-      rowHeadOrder.set(resolvedHead.id, nextRowFallbackOrder);
-      nextRowFallbackOrder += 1;
-    }
-
-    recomputeRowTail(resolvedHead.id);
-
-    if (currentHead && currentHead.order === resolvedHead.order) {
-      markStateChanged();
-      return;
-    }
-
-    recomputeAllColumnTails();
-    markStateChanged();
-  };
-
-  const upsertColumn = (nextColumnHead: GridUpsertHead<TColumnHead>) => {
-    const columnHeadLike = nextColumnHead as GridRecord & { id: TColumnId };
-
-    if (typeof columnHeadLike.id !== "string") {
-      throw new Error("Column header upserts must include a string id.");
-    }
-
-    const currentHeadCell = columnHeadCells.get(columnHeadLike.id);
-    const currentHead = currentHeadCell?.get();
-    const resolvedHead = normalizeUpsertHead(
-      columnHeadLike,
-      currentHead,
-      nextColumnFallbackOrder,
-    ) as TColumnHead;
-
-    if (currentHeadCell) {
-      currentHeadCell.set(resolvedHead);
-    } else {
-      columnHeadCells.set(resolvedHead.id, cell(resolvedHead));
-      columnTailCells.set(resolvedHead.id, cell(createEmptyTailState()));
-      columnHeadOrder.set(resolvedHead.id, nextColumnFallbackOrder);
-      nextColumnFallbackOrder += 1;
-    }
-
-    recomputeColumnTail(resolvedHead.id);
-
-    if (currentHead && currentHead.order === resolvedHead.order) {
-      markStateChanged();
-      return;
-    }
-
-    recomputeAllRowTails();
-    markStateChanged();
-  };
-
-  const upsertCells = (nextCells: readonly TStateCell[]) => {
+  const applyCellUpserts = (nextCells: readonly TStateCell[]) => {
     if (nextCells.length === 0) {
-      return;
+      return null;
     }
 
     const touchedRowIds = new Set<TRowId>();
     const touchedColumnIds = new Set<TColumnId>();
+    const normalizedCells: TStateCell[] = [];
+    const previousCells: TStateCell[] = [];
+    const cellKeys: string[] = [];
 
     isApplyingState = true;
 
@@ -592,24 +601,314 @@ function createGridStore<
         const gridKey = createGridKey(rowId, columnId);
         const currentCell = cellsMap.get(gridKey);
 
-        if (currentCell) currentCell.set(normalizedValue);
-        else attachCell(rowId, columnId, cell(normalizedValue));
+        if (currentCell) {
+          previousCells.push(
+            stateAdapter.serializeCell(rowId, columnId, currentCell.get()),
+          );
+          currentCell.set(normalizedValue);
+        } else {
+          attachCell(rowId, columnId, cell(normalizedValue));
+        }
 
+        normalizedCells.push(
+          stateAdapter.serializeCell(rowId, columnId, normalizedValue),
+        );
         touchedRowIds.add(rowId);
         touchedColumnIds.add(columnId);
+        cellKeys.push(gridKey);
       });
     } finally {
       isApplyingState = false;
     }
 
-    touchedRowIds.forEach((rowId) => {
-      recomputeRowTail(rowId);
-    });
-    touchedColumnIds.forEach((columnId) => {
-      recomputeColumnTail(columnId);
+    const rowIds = [...touchedRowIds];
+    const columnIds = [...touchedColumnIds];
+
+    return {
+      rowIds,
+      columnIds,
+      rowTailIds: rowIds.filter((rowId) => recomputeRowTailInternal(rowId)),
+      columnTailIds: columnIds.filter((columnId) =>
+        recomputeColumnTailInternal(columnId),
+      ),
+      cells: normalizedCells,
+      previousCells,
+      cellKeys,
+    };
+  };
+
+  const emitCellUpsert = (
+    source: "upsertCell" | "upsertCells",
+    nextCells: readonly TStateCell[],
+  ) => {
+    const result = applyCellUpserts(nextCells);
+
+    if (!result) {
+      return;
+    }
+
+    emitGridUpdate(
+      {
+        type: "cells",
+        action: "upsert",
+        source,
+        rowIds: result.rowIds,
+        columnIds: result.columnIds,
+        rowTailIds: toOptionalArray(result.rowTailIds),
+        columnTailIds: toOptionalArray(result.columnTailIds),
+        cellKeys: result.cellKeys,
+        cells: result.cells,
+        previousCells: toOptionalArray(result.previousCells),
+      },
+      true,
+    );
+  };
+
+  const applyRowUpserts = (nextRowHeads: readonly GridUpsertHead<TRowHead>[]) => {
+    if (nextRowHeads.length === 0) {
+      return null;
+    }
+
+    const rowIds = new Set<TRowId>();
+    const rows: TRowHead[] = [];
+    const previousRows: TRowHead[] = [];
+    let shouldRecomputeColumns = false;
+
+    nextRowHeads.forEach((nextRowHead) => {
+      const rowHeadLike = nextRowHead as GridRecord & { id: TRowId };
+
+      if (typeof rowHeadLike.id !== "string") {
+        throw new Error("Row header upserts must include a string id.");
+      }
+
+      const currentHeadCell = rowHeadCells.get(rowHeadLike.id);
+      const currentHead = currentHeadCell?.get();
+      const resolvedHead = normalizeUpsertHead(
+        rowHeadLike,
+        currentHead,
+        nextRowFallbackOrder,
+      ) as TRowHead;
+
+      if (currentHeadCell) {
+        currentHeadCell.set(resolvedHead);
+      } else {
+        rowHeadCells.set(resolvedHead.id, cell(resolvedHead));
+        rowTailCells.set(resolvedHead.id, cell(createEmptyTailState()));
+        rowHeadOrder.set(resolvedHead.id, nextRowFallbackOrder);
+        nextRowFallbackOrder += 1;
+      }
+
+      rows.push(resolvedHead);
+
+      if (currentHead) {
+        previousRows.push(currentHead);
+      }
+
+      rowIds.add(resolvedHead.id);
+      shouldRecomputeColumns ||= !currentHead || currentHead.order !== resolvedHead.order;
     });
 
-    markStateChanged();
+    const resolvedRowIds = [...rowIds];
+
+    return {
+      rows,
+      previousRows,
+      rowIds: resolvedRowIds,
+      rowTailIds: resolvedRowIds.filter((rowId) => recomputeRowTailInternal(rowId)),
+      columnTailIds: shouldRecomputeColumns ? recomputeAllColumnTails() : [],
+    };
+  };
+
+  const emitRowUpserts = (
+    source: "upsertRow" | "upsertRows",
+    nextRowHeads: readonly GridUpsertHead<TRowHead>[],
+  ) => {
+    const result = applyRowUpserts(nextRowHeads);
+
+    if (!result) {
+      return;
+    }
+
+    emitGridUpdate(
+      {
+        type: "rows",
+        action: "upsert",
+        source,
+        rowIds: result.rowIds,
+        rowTailIds: toOptionalArray(result.rowTailIds),
+        columnTailIds: toOptionalArray(result.columnTailIds),
+        rows: result.rows,
+        previousRows: toOptionalArray(result.previousRows),
+      },
+      true,
+    );
+  };
+
+  const applyColumnUpserts = (
+    nextColumnHeads: readonly GridUpsertHead<TColumnHead>[],
+  ) => {
+    if (nextColumnHeads.length === 0) {
+      return null;
+    }
+
+    const columnIds = new Set<TColumnId>();
+    const columns: TColumnHead[] = [];
+    const previousColumns: TColumnHead[] = [];
+    let shouldRecomputeRows = false;
+
+    nextColumnHeads.forEach((nextColumnHead) => {
+      const columnHeadLike = nextColumnHead as GridRecord & { id: TColumnId };
+
+      if (typeof columnHeadLike.id !== "string") {
+        throw new Error("Column header upserts must include a string id.");
+      }
+
+      const currentHeadCell = columnHeadCells.get(columnHeadLike.id);
+      const currentHead = currentHeadCell?.get();
+      const resolvedHead = normalizeUpsertHead(
+        columnHeadLike,
+        currentHead,
+        nextColumnFallbackOrder,
+      ) as TColumnHead;
+
+      if (currentHeadCell) {
+        currentHeadCell.set(resolvedHead);
+      } else {
+        columnHeadCells.set(resolvedHead.id, cell(resolvedHead));
+        columnTailCells.set(resolvedHead.id, cell(createEmptyTailState()));
+        columnHeadOrder.set(resolvedHead.id, nextColumnFallbackOrder);
+        nextColumnFallbackOrder += 1;
+      }
+
+      columns.push(resolvedHead);
+
+      if (currentHead) {
+        previousColumns.push(currentHead);
+      }
+
+      columnIds.add(resolvedHead.id);
+      shouldRecomputeRows ||= !currentHead || currentHead.order !== resolvedHead.order;
+    });
+
+    const resolvedColumnIds = [...columnIds];
+
+    return {
+      columns,
+      previousColumns,
+      columnIds: resolvedColumnIds,
+      rowTailIds: shouldRecomputeRows ? recomputeAllRowTails() : [],
+      columnTailIds: resolvedColumnIds.filter((columnId) =>
+        recomputeColumnTailInternal(columnId),
+      ),
+    };
+  };
+
+  const emitColumnUpserts = (
+    source: "upsertColumn" | "upsertColumns",
+    nextColumnHeads: readonly GridUpsertHead<TColumnHead>[],
+  ) => {
+    const result = applyColumnUpserts(nextColumnHeads);
+
+    if (!result) {
+      return;
+    }
+
+    emitGridUpdate(
+      {
+        type: "columns",
+        action: "upsert",
+        source,
+        columnIds: result.columnIds,
+        rowTailIds: toOptionalArray(result.rowTailIds),
+        columnTailIds: toOptionalArray(result.columnTailIds),
+        columns: result.columns,
+        previousColumns: toOptionalArray(result.previousColumns),
+      },
+      true,
+    );
+  };
+
+  initialCells.forEach(({ rowId, columnId, cell: currentCell }) => {
+    attachCell(rowId, columnId, currentCell);
+  });
+
+  hydrate();
+
+  const updateRowHead = (rowId: TRowId, nextRowHead: Updater<TRowHead>) => {
+    const currentHeadCell = getHeadCell(rowHeadCells, rowId, "row");
+    const currentHead = currentHeadCell.get();
+    const resolvedHead = resolveUpdater(nextRowHead, currentHead);
+
+    assertHeadId("row", rowId, resolvedHead.id);
+    currentHeadCell.set(resolvedHead);
+
+    const columnTailIds =
+      currentHead.order === resolvedHead.order ? [] : recomputeAllColumnTails();
+
+    emitGridUpdate(
+      {
+        type: "row-head",
+        action: "update",
+        source: "updateRowHead",
+        rowIds: [rowId],
+        columnTailIds: toOptionalArray(columnTailIds),
+        rows: [resolvedHead],
+        previousRows: [currentHead],
+      },
+      true,
+    );
+  };
+
+  const updateColumnHead = (
+    columnId: TColumnId,
+    nextColumnHead: Updater<TColumnHead>,
+  ) => {
+    const currentHeadCell = getHeadCell(columnHeadCells, columnId, "column");
+    const currentHead = currentHeadCell.get();
+    const resolvedHead = resolveUpdater(nextColumnHead, currentHead);
+
+    assertHeadId("column", columnId, resolvedHead.id);
+    currentHeadCell.set(resolvedHead);
+
+    const rowTailIds =
+      currentHead.order === resolvedHead.order ? [] : recomputeAllRowTails();
+
+    emitGridUpdate(
+      {
+        type: "column-head",
+        action: "update",
+        source: "updateColumnHead",
+        columnIds: [columnId],
+        rowTailIds: toOptionalArray(rowTailIds),
+        columns: [resolvedHead],
+        previousColumns: [currentHead],
+      },
+      true,
+    );
+  };
+
+  const upsertRow = (nextRowHead: GridUpsertHead<TRowHead>) => {
+    emitRowUpserts("upsertRow", [nextRowHead]);
+  };
+
+  const upsertRows = (nextRowHeads: readonly GridUpsertHead<TRowHead>[]) => {
+    emitRowUpserts("upsertRows", nextRowHeads);
+  };
+
+  const upsertColumn = (nextColumnHead: GridUpsertHead<TColumnHead>) => {
+    emitColumnUpserts("upsertColumn", [nextColumnHead]);
+  };
+
+  const upsertColumns = (nextColumnHeads: readonly GridUpsertHead<TColumnHead>[]) => {
+    emitColumnUpserts("upsertColumns", nextColumnHeads);
+  };
+
+  const upsertCells = (nextCells: readonly TStateCell[]) => {
+    emitCellUpsert("upsertCells", nextCells);
+  };
+
+  const upsertCell = (nextCell: TStateCell) => {
+    emitCellUpsert("upsertCell", [nextCell]);
   };
 
   function getState() {
@@ -639,7 +938,19 @@ function createGridStore<
     const currentTailState = currentTailCell.get();
     const currentTailValue = currentTailState.isReactive ? currentTailState.value : null;
 
-    setTailCellResult(currentTailCell, resolveUpdater(nextRowTail, currentTailValue));
+    if (
+      !setTailCellResult(currentTailCell, resolveUpdater(nextRowTail, currentTailValue))
+    ) {
+      return;
+    }
+
+    emitGridUpdate({
+      type: "row-tail",
+      action: "update",
+      source: "updateRowTail",
+      rowIds: [rowId],
+      rowTailIds: [rowId],
+    });
   };
 
   const updateColumnTail = (
@@ -650,7 +961,22 @@ function createGridStore<
     const currentTailState = currentTailCell.get();
     const currentTailValue = currentTailState.isReactive ? currentTailState.value : null;
 
-    setTailCellResult(currentTailCell, resolveUpdater(nextColumnTail, currentTailValue));
+    if (
+      !setTailCellResult(
+        currentTailCell,
+        resolveUpdater(nextColumnTail, currentTailValue),
+      )
+    ) {
+      return;
+    }
+
+    emitGridUpdate({
+      type: "column-tail",
+      action: "update",
+      source: "updateColumnTail",
+      columnIds: [columnId],
+      columnTailIds: [columnId],
+    });
   };
 
   function registerRowTail<TTail>(
@@ -661,7 +987,7 @@ function createGridStore<
       rowId,
       onRowUpdate as GridAxisTailUpdater<TCell, TRowId, TColumnId, unknown>,
     );
-    recomputeRowTail(rowId);
+    recomputeRowTailInternal(rowId);
 
     return () => {
       if (rowTailUpdaters.get(rowId) !== onRowUpdate) {
@@ -680,7 +1006,7 @@ function createGridStore<
       columnId,
       onColumnUpdate as GridAxisTailUpdater<TCell, TRowId, TColumnId, unknown>,
     );
-    recomputeColumnTail(columnId);
+    recomputeColumnTailInternal(columnId);
 
     return () => {
       if (columnTailUpdaters.get(columnId) !== onColumnUpdate) {
@@ -691,17 +1017,195 @@ function createGridStore<
     };
   }
 
-  return {
+  const setGrid = (
+    nextState: TState | Partial<TState>,
+    mode: GridSetMode = "replace",
+  ) => {
+    const previousState = getState();
+
+    if (mode === "update") {
+      const patch = normalizeGridStatePatchInput(nextState);
+
+      if (!hasGridStatePatch(patch)) {
+        return;
+      }
+
+      const mergedState = {
+        rows: patch.rows
+          ? mergeHeadStates(previousState.rows, patch.rows as readonly TRowHead[])
+          : previousState.rows,
+        columns: patch.columns
+          ? mergeHeadStates(
+              previousState.columns,
+              patch.columns as readonly TColumnHead[],
+            )
+          : previousState.columns,
+        cells: patch.cells
+          ? mergeCellStates(
+              previousState.cells,
+              patch.cells as readonly TStateCell[],
+              stateAdapter,
+            )
+          : previousState.cells,
+      } as TState;
+
+      const { rowTailIds, columnTailIds } = replaceState(mergedState);
+
+      emitGridUpdate(
+        {
+          type: "grid",
+          action: "update",
+          source: "setGrid",
+          mode,
+          rowIds: mergedState.rows.map((rowHead) => rowHead.id),
+          columnIds: mergedState.columns.map((columnHead) => columnHead.id),
+          rowTailIds: toOptionalArray(rowTailIds),
+          columnTailIds: toOptionalArray(columnTailIds),
+          rows: mergedState.rows,
+          previousRows: previousState.rows,
+          columns: mergedState.columns,
+          previousColumns: previousState.columns,
+          cells: mergedState.cells,
+          previousCells: previousState.cells,
+        },
+        true,
+      );
+
+      return;
+    }
+
+    const nextSnapshot = normalizeGridStateInput(nextState) as TState;
+    const { rowTailIds, columnTailIds } = replaceState(nextSnapshot);
+
+    emitGridUpdate(
+      {
+        type: "grid",
+        action: "replace",
+        source: "setGrid",
+        mode,
+        rowIds: nextSnapshot.rows.map((rowHead) => rowHead.id),
+        columnIds: nextSnapshot.columns.map((columnHead) => columnHead.id),
+        rowTailIds: toOptionalArray(rowTailIds),
+        columnTailIds: toOptionalArray(columnTailIds),
+        rows: nextSnapshot.rows,
+        previousRows: previousState.rows,
+        columns: nextSnapshot.columns,
+        previousColumns: previousState.columns,
+        cells: nextSnapshot.cells,
+        previousCells: previousState.cells,
+      },
+      true,
+    );
+  };
+
+  const clearCells = () => {
+    const previousState = getState();
+
+    if (previousState.cells.length === 0) {
+      return;
+    }
+
+    const nextState = {
+      rows: previousState.rows,
+      columns: previousState.columns,
+      cells: [],
+    } as unknown as TState;
+    const { rowTailIds, columnTailIds } = replaceState(nextState);
+
+    emitGridUpdate(
+      {
+        type: "cells",
+        action: "clear",
+        source: "clearCells",
+        rowIds: previousState.rows.map((rowHead) => rowHead.id),
+        columnIds: previousState.columns.map((columnHead) => columnHead.id),
+        rowTailIds: toOptionalArray(rowTailIds),
+        columnTailIds: toOptionalArray(columnTailIds),
+        cells: [],
+        previousCells: previousState.cells,
+      },
+      true,
+    );
+  };
+
+  const clearGrid = () => {
+    const previousState = getState();
+
+    if (
+      previousState.rows.length === 0 &&
+      previousState.columns.length === 0 &&
+      previousState.cells.length === 0
+    ) {
+      return;
+    }
+
+    const nextState = {
+      rows: [],
+      columns: [],
+      cells: [],
+    } as unknown as TState;
+    const { rowTailIds, columnTailIds } = replaceState(nextState);
+
+    emitGridUpdate(
+      {
+        type: "grid",
+        action: "clear",
+        source: "clearGrid",
+        rowIds: previousState.rows.map((rowHead) => rowHead.id),
+        columnIds: previousState.columns.map((columnHead) => columnHead.id),
+        rowTailIds: toOptionalArray(rowTailIds),
+        columnTailIds: toOptionalArray(columnTailIds),
+        rows: [],
+        previousRows: previousState.rows,
+        columns: [],
+        previousColumns: previousState.columns,
+        cells: [],
+        previousCells: previousState.cells,
+      },
+      true,
+    );
+  };
+
+  const recomputeRowTail = (rowId: TRowId) => {
+    if (!recomputeRowTailInternal(rowId)) {
+      return;
+    }
+
+    emitGridUpdate({
+      type: "row-tail",
+      action: "recompute",
+      source: "recomputeRowTail",
+      rowIds: [rowId],
+      rowTailIds: [rowId],
+    });
+  };
+
+  const recomputeColumnTail = (columnId: TColumnId) => {
+    if (!recomputeColumnTailInternal(columnId)) {
+      return;
+    }
+
+    emitGridUpdate({
+      type: "column-tail",
+      action: "recompute",
+      source: "recomputeColumnTail",
+      columnIds: [columnId],
+      columnTailIds: [columnId],
+    });
+  };
+
+  gridApi = {
     get rowHeaders() {
-      return getOrderedRowHeads().map((rowHead) => rowHead.id);
+      return refreshAxisIdsSnapshot().rows;
     },
     get colHeaders() {
-      return getOrderedColumnHeads().map((columnHead) => columnHead.id);
+      return refreshAxisIdsSnapshot().cols;
     },
     getState,
+    setGrid,
     getCell,
     getValue: (rowId, columnId) => getCell(rowId, columnId).get(),
-    setValue: (rowId, columnId, newValue) => {
+    __setCellValue: (rowId, columnId, newValue) => {
       const currentCell = getCell(rowId, columnId);
 
       isApplyingState = true;
@@ -712,9 +1216,23 @@ function createGridStore<
         isApplyingState = false;
       }
 
-      recomputeRowTail(rowId);
-      recomputeColumnTail(columnId);
-      markStateChanged();
+      const rowTailIds = recomputeRowTailInternal(rowId) ? [rowId] : [];
+      const columnTailIds = recomputeColumnTailInternal(columnId) ? [columnId] : [];
+
+      emitGridUpdate(
+        {
+          type: "cells",
+          action: "update",
+          source: "cell.set",
+          rowIds: [rowId],
+          columnIds: [columnId],
+          rowTailIds: toOptionalArray(rowTailIds),
+          columnTailIds: toOptionalArray(columnTailIds),
+          cellKeys: [createGridKey(rowId, columnId)],
+          cells: [stateAdapter.serializeCell(rowId, columnId, currentCell.get())],
+        },
+        true,
+      );
     },
     hasCell: (rowId, columnId) => cellsMap.has(createGridKey(rowId, columnId)),
     getRowHead: (rowId) => getHeadCell(rowHeadCells, rowId, "row").get(),
@@ -722,9 +1240,20 @@ function createGridStore<
     updateRowHead,
     updateColumnHead,
     upsertRow,
+    upsertRows,
     upsertColumn,
-    upsertCell: (nextCell) => upsertCells([nextCell]),
+    upsertColumns,
+    upsertCell,
     upsertCells,
+    clearCells,
+    clearGrid,
+    subscribeGrid: (callback) => {
+      gridSubscribers.add(callback);
+
+      return () => {
+        gridSubscribers.delete(callback);
+      };
+    },
     subscribeRowHead: (rowId, callback) =>
       getHeadCell(rowHeadCells, rowId, "row").subscribe(callback),
     subscribeColumnHead: (columnId, callback) =>
@@ -756,6 +1285,8 @@ function createGridStore<
     recomputeRowTail,
     recomputeColumnTail,
   };
+
+  return gridApi;
 }
 
 function resolveUpdater<TValue>(nextValue: Updater<TValue>, currentValue: TValue) {
@@ -778,11 +1309,209 @@ export function useGrid<
   TState extends GridState<TStateCell, TRowHead, TColumnHead>,
 >(
   currentGrid: Grid<TCell, TRowId, TColumnId, TRowHead, TColumnHead, TStateCell, TState>,
+  options?: UseGridOptions<
+    TCell,
+    TRowId,
+    TColumnId,
+    TRowHead,
+    TColumnHead,
+    TStateCell,
+    TState
+  >,
 ): GridAxisIds<TRowId, TColumnId> {
-  return {
+  const snapshotRef = useRef<GridAxisIds<TRowId, TColumnId>>({
     rows: currentGrid.rowHeaders,
     cols: currentGrid.colHeaders,
+  });
+  const onGridUpdateRef = useRef(options?.onGridUpdate);
+
+  useEffect(() => {
+    onGridUpdateRef.current = options?.onGridUpdate;
+  }, [options?.onGridUpdate]);
+
+  useEffect(() => {
+    return currentGrid.subscribeGrid((updatedGrid, diff) => {
+      onGridUpdateRef.current?.(updatedGrid, diff);
+    });
+  }, [currentGrid]);
+
+  const subscribe = useCallback(
+    (callback: Subscriber) => currentGrid.subscribeGrid(() => callback()),
+    [currentGrid],
+  );
+  const getSnapshot = useCallback(() => {
+    const nextRows = currentGrid.rowHeaders;
+    const nextCols = currentGrid.colHeaders;
+    const currentSnapshot = snapshotRef.current;
+
+    if (currentSnapshot.rows === nextRows && currentSnapshot.cols === nextCols) {
+      return currentSnapshot;
+    }
+
+    const nextSnapshot = {
+      rows: nextRows,
+      cols: nextCols,
+    };
+
+    snapshotRef.current = nextSnapshot;
+
+    return nextSnapshot;
+  }, [currentGrid]);
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+function toOptionalArray<TValue>(values: readonly TValue[]) {
+  return values.length === 0 ? undefined : values;
+}
+
+function haveSameItems<TValue>(left: readonly TValue[], right: readonly TValue[]) {
+  return (
+    left.length === right.length &&
+    left.every((currentValue, index) => Object.is(currentValue, right[index]))
+  );
+}
+
+function normalizeGridStateInput<TStateCell, TRow, TColumn>(
+  value:
+    | GridState<TStateCell, TRow, TColumn>
+    | Partial<GridState<TStateCell, TRow, TColumn>>,
+): GridState<TStateCell, TRow, TColumn> {
+  if (!value || typeof value !== "object") {
+    throw new Error("Grid state updates must be objects.");
+  }
+
+  const partialState = value as Partial<GridState<TStateCell, TRow, TColumn>>;
+  const { cells = [], rows = [], columns = [] } = partialState;
+
+  if (!Array.isArray(cells) || !Array.isArray(rows) || !Array.isArray(columns)) {
+    throw new Error(
+      "Grid state updates must contain cells, rows, and columns arrays when provided.",
+    );
+  }
+
+  return {
+    cells,
+    rows,
+    columns,
   };
+}
+
+function normalizeGridStatePatchInput<TStateCell, TRow, TColumn>(
+  value:
+    | GridState<TStateCell, TRow, TColumn>
+    | Partial<GridState<TStateCell, TRow, TColumn>>,
+) {
+  if (!value || typeof value !== "object") {
+    throw new Error("Grid state updates must be objects.");
+  }
+
+  const partialState = value as Partial<GridState<TStateCell, TRow, TColumn>>;
+  const readOptionalArray = <TValue>(
+    key: keyof GridState<TStateCell, TRow, TColumn>,
+    arrayValue: readonly TValue[] | undefined,
+  ) => {
+    if (arrayValue === undefined) {
+      return undefined;
+    }
+
+    if (!Array.isArray(arrayValue)) {
+      throw new Error(
+        `Grid state updates must provide an array for "${String(key)}" when present.`,
+      );
+    }
+
+    return arrayValue;
+  };
+
+  return {
+    rows: readOptionalArray("rows", partialState.rows),
+    columns: readOptionalArray("columns", partialState.columns),
+    cells: readOptionalArray("cells", partialState.cells),
+  };
+}
+
+function hasGridStatePatch<TStateCell, TRow, TColumn>(patch: {
+  rows?: readonly TRow[];
+  columns?: readonly TColumn[];
+  cells?: readonly TStateCell[];
+}) {
+  return Boolean(
+    (patch.rows && patch.rows.length > 0) ||
+    (patch.columns && patch.columns.length > 0) ||
+    (patch.cells && patch.cells.length > 0),
+  );
+}
+
+function mergeHeadStates<TId extends string, THead extends GridHead<TId>>(
+  currentHeads: readonly THead[],
+  nextHeads: readonly THead[],
+) {
+  const currentIds = new Set<TId>();
+  const nextHeadsById = new Map<TId, THead>();
+
+  currentHeads.forEach((currentHead) => {
+    currentIds.add(currentHead.id);
+  });
+
+  nextHeads.forEach((nextHead) => {
+    nextHeadsById.set(nextHead.id, nextHead);
+  });
+
+  const resolvedHeads = currentHeads.map((currentHead) => {
+    return nextHeadsById.get(currentHead.id) ?? currentHead;
+  });
+
+  nextHeads.forEach((nextHead) => {
+    if (currentIds.has(nextHead.id)) {
+      return;
+    }
+
+    resolvedHeads.push(nextHead);
+  });
+
+  return resolvedHeads;
+}
+
+function mergeCellStates<
+  TCell,
+  TRowId extends string,
+  TColumnId extends string,
+  TStateCell,
+>(
+  currentCells: readonly TStateCell[],
+  nextCells: readonly TStateCell[],
+  stateAdapter: GridStateAdapter<TCell, TRowId, TColumnId, TStateCell>,
+) {
+  const currentKeys = new Set<string>();
+  const nextCellsByKey = new Map<string, TStateCell>();
+
+  nextCells.forEach((nextCell) => {
+    const { rowId, columnId } = stateAdapter.deserializeCell(nextCell);
+    nextCellsByKey.set(createGridKey(rowId, columnId), nextCell);
+  });
+
+  const mergedCells = currentCells.map((currentCell) => {
+    const { rowId, columnId } = stateAdapter.deserializeCell(currentCell);
+    const gridKey = createGridKey(rowId, columnId);
+
+    currentKeys.add(gridKey);
+
+    return nextCellsByKey.get(gridKey) ?? currentCell;
+  });
+
+  nextCells.forEach((nextCell) => {
+    const { rowId, columnId } = stateAdapter.deserializeCell(nextCell);
+    const gridKey = createGridKey(rowId, columnId);
+
+    if (currentKeys.has(gridKey)) {
+      return;
+    }
+
+    mergedCells.push(nextCell);
+  });
+
+  return mergedCells;
 }
 
 function normalizeGridState<TState extends GridState<GridRecord, GridRecord, GridRecord>>(
