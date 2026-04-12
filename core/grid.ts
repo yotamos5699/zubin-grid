@@ -1332,6 +1332,12 @@ function normalizeGridStateInput<TStateCell, TRow, TColumn>(
     throw new Error("Grid state updates must be objects.");
   }
 
+  if (Array.isArray(value)) {
+    throw new Error(
+      "Grid state updates must use { rows, columns, cells } objects, not arrays.",
+    );
+  }
+
   const partialState = value as Partial<GridState<TStateCell, TRow, TColumn>>;
   const { cells = [], rows = [], columns = [] } = partialState;
 
@@ -1355,6 +1361,12 @@ function normalizeGridStatePatchInput<TStateCell, TRow, TColumn>(
 ) {
   if (!value || typeof value !== "object") {
     throw new Error("Grid state updates must be objects.");
+  }
+
+  if (Array.isArray(value)) {
+    throw new Error(
+      "Grid state updates must use { rows, columns, cells } objects, not arrays.",
+    );
   }
 
   const partialState = value as Partial<GridState<TStateCell, TRow, TColumn>>;
@@ -1470,6 +1482,12 @@ function normalizeGridState<TState extends GridState<GridRecord, GridRecord, Gri
 ): GridState<SchemaCell<TState>, SchemaRow<TState>, SchemaColumn<TState>> {
   if (!value || typeof value !== "object") {
     throw new Error("Grid state initializer must return an object.");
+  }
+
+  if (Array.isArray(value)) {
+    throw new Error(
+      "Legacy matrix grid input has been removed. Pass a schema object with rows, columns, and cells instead.",
+    );
   }
 
   const partialState = value as Partial<

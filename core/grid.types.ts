@@ -46,6 +46,14 @@ export interface GridState<TCell, TRow = GridRecord, TColumn = GridRecord> {
   columns: readonly TColumn[];
 }
 
+type IsAny<TValue> = 0 extends 1 & TValue ? true : false;
+
+type NonAny<TValue> = IsAny<TValue> extends true ? never : TValue;
+
+type StrictPartial<TValue> = IsAny<TValue> extends true ? never : Partial<TValue>;
+
+type NonArrayValue<TValue> = TValue extends readonly unknown[] ? never : TValue;
+
 export type SchemaCell<TState extends GridState<GridRecord, GridRecord, GridRecord>> =
   TState["cells"][number];
 
@@ -66,9 +74,9 @@ export interface GridStateCell<
 }
 
 export type GridStateInitializer<TState> =
-  | TState
-  | Partial<TState>
-  | (() => TState | Partial<TState>);
+  | NonArrayValue<NonAny<TState>>
+  | NonArrayValue<StrictPartial<TState>>
+  | (() => NonArrayValue<NonAny<TState>> | NonArrayValue<StrictPartial<TState>>);
 
 export type GridPosition<
   TColumnId extends string = string,

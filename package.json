@@ -1,6 +1,6 @@
 {
   "name": "zubin-grid",
-  "version": "0.4.11",
+  "version": "0.4.12",
   "description": "A lightweight grid state manager for React and TypeScript.",
   "type": "module",
   "main": "./dist/index.js",
@@ -45,6 +45,7 @@
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
+    "check:types": "tsc -p tsconfig.type-tests.json --noEmit",
     "example": "vite --config examples/vite.config.ts",
     "example:build": "vite build --config examples/vite.config.ts",
     "example:check": "tsc -p examples/tsconfig.json --noEmit",
@@ -53,6 +54,9 @@
   },
   "keywords": [
     "grid",
+    "matrix",
+    "table",
+    "data-grid",
     "state-manager",
     "react",
     "typescript",
