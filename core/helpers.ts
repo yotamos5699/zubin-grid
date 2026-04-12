@@ -1,5 +1,5 @@
-import type { Grid, GridState } from "./grid.types.js";
-import type { GridHead } from "./head.types.js";
+import type { Grid, GridState } from "./types/grid.types.js";
+import type { GridHead } from "./types/head.types.js";
 
 export function reorderRow<
   TCell,

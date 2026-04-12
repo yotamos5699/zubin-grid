@@ -2,8 +2,8 @@ import { useCallback, useSyncExternalStore } from "react";
 
 import { cell } from "./cell.js";
 
-import type { Cell, Subscriber, Updater } from "./cell.types.js";
-import type { Grid, GridPosition, GridState } from "./grid.types.js";
+import type { Cell, Subscriber, Updater } from "./types/cell.types.js";
+import type { Grid, GridPosition, GridState } from "./types/grid.types.js";
 import type {
   GridHead,
   GridHeadHookResult,
@@ -11,7 +11,7 @@ import type {
   GridHeadInput,
   GridHeadObject,
   ResolvedGridHead,
-} from "./head.types.js";
+} from "./types/head.types.js";
 
 export type {
   GridHead,
@@ -21,7 +21,7 @@ export type {
   GridHeadObject,
   NormalizedGridHead,
   ResolvedGridHead,
-} from "./head.types.js";
+} from "./types/head.types.js";
 
 export function useRowHead<
   TCell,

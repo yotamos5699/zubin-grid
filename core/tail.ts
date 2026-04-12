@@ -2,17 +2,17 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import { cell } from "./cell.js";
 
-import type { Cell, Subscriber } from "./cell.types.js";
-import type { Grid, GridPosition, GridState } from "./grid.types.js";
-import type { GridHead } from "./head.types.js";
+import type { Cell, Subscriber } from "./types/cell.types.js";
+import type { Grid, GridPosition, GridState } from "./types/grid.types.js";
+import type { GridHead } from "./types/head.types.js";
 import type {
   GridAxisCell,
   GridAxisTailUpdater,
   GridTailHookValue,
   GridTailState,
-} from "./tail.types.js";
+} from "./types/tail.types.js";
 
-export type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./tail.types.js";
+export type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./types/tail.types.js";
 
 export function useRowTail<
   TCell,

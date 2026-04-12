@@ -134,6 +134,8 @@ export function BudgetCell(props: {
 }
 ```
 
+`useCell(grid, rowId, columnId)` returns a React-friendly setter for that cell. Outside React, mutate store cells with `grid.upsertCell(...)` or `grid.upsertCells(...)` rather than a store-level `setValue(...)` helper.
+
 ## Working with heads
 
 Headers are stored separately from cell values, so labels and order can change without rebuilding the grid.
@@ -320,6 +322,63 @@ salesGrid.upsertCell({ rowId: 'west', columnId: 'mar', value: 21 })
 
 `getValue`, `getRowHead`, and `getColumnHead` are also non-reactive getters when you only need a targeted read.
 
+## Sub grids
+
+Use `createSubGrid` when you want a second grid layer that reuses the parent grid's row and column dimensions, but stores a different cell shape.
+
+```ts
+import { createSubGrid, useCell } from 'zubin-grid'
+
+type SalesNoteCell = {
+  note: string
+  dirty?: boolean
+}
+
+const salesNotesGrid = createSubGrid<SalesNoteCell>(salesGrid, [], ['sales-notes'])
+
+function SalesNote(props: {
+  rowId: 'north' | 'south'
+  columnId: 'jan' | 'feb'
+}) {
+  const [noteCell, setNoteCell] = useCell(
+    salesNotesGrid,
+    props.rowId,
+    props.columnId,
+  )
+
+  return (
+    <input
+      value={noteCell.note}
+      onChange={(event) =>
+        setNoteCell({
+          ...noteCell,
+          note: event.target.value,
+          dirty: true,
+        })
+      }
+    />
+  )
+}
+```
+
+Sub grids behave like normal grids for cell and hook usage, with a few important rules:
+
+- They inherit the parent grid's row ids, column ids, row heads, and column heads.
+- Parent row and column changes stay in sync, including upserts, label changes, order changes, `setGrid(...)`, and `clearGrid()`.
+- `useCell`, `useCellValue`, `useGrid`, `useRowHead`, `useColumnHead`, `useRowTail`, and `useColumnTail` all work with sub grids.
+- Persistence is independent, so a sub grid can keep its own snapshot with `persist: ['your-key']`.
+- Row and column mutations called on a sub grid are forwarded to the parent grid.
+- `clearGrid()` on a sub grid clears the sub grid's own cells while keeping the inherited parent dimensions intact.
+
+You can also pass an options object when you want cells plus persistence together in a single argument:
+
+```ts
+const salesFlagsGrid = createSubGrid<SalesNoteCell>(salesGrid, {
+  cells: [{ rowId: 'north', columnId: 'jan', value: { note: 'Review' } }],
+  persist: ['sales-flags'],
+})
+```
+
 ## Persistence
 
 Use `persist` to cache the current grid snapshot under a storage key. A custom adapter can be provided, otherwise `zubin-grid` falls back to a default async browser storage implementation with a runtime cache.
@@ -360,6 +419,7 @@ const persistedWithCustomAdapter = grid<SalesSchema>(initialState, {
 - `cell(initialValue)` - creates a reactive cell
 - `grid({ rows, columns, cells }, options)` - creates a grid from JSON-friendly state
 - `grid(() => ({ rows, columns, cells }), options)` - lazily creates typed grid state
+- `createSubGrid(parentGrid, cellsOrOptions?, persist?)` - creates a child grid with its own cells while inheriting the parent grid dimensions
 
 ### Cell hooks
 
@@ -405,6 +465,7 @@ Use the root package for most cases:
 ```ts
 import {
   cell,
+  createSubGrid,
   grid,
   useCell,
   useCellValue,

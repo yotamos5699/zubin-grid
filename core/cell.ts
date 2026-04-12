@@ -1,10 +1,10 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-import type { Cell, CellInitializer, Subscriber, Updater } from "./cell.types.js";
-import type { Grid, GridPosition, GridState } from "./grid.types.js";
-import type { GridHead } from "./head.types.js";
+import type { Cell, CellInitializer, Subscriber, Updater } from "./types/cell.types.js";
+import type { Grid, GridPosition, GridState } from "./types/grid.types.js";
+import type { GridHead } from "./types/head.types.js";
 
-export type { Cell, Subscriber, Updater } from "./cell.types.js";
+export type { Cell, Subscriber, Updater } from "./types/cell.types.js";
 
 type GridWithCellSetter<
   TCell,

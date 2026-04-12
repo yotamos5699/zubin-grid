@@ -179,6 +179,43 @@ export interface Grid<
   recomputeColumnTail: (columnId: TColumnId) => void;
 }
 
+export type SubGridState<
+  TCell,
+  TRowId extends string = string,
+  TColumnId extends string = string,
+  TRowHead extends GridHead<TRowId> = GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId> = GridHead<TColumnId>,
+> = GridState<GridStateCell<TCell, TRowId, TColumnId>, TRowHead, TColumnHead>;
+
+export type SubGrid<
+  TCell,
+  TRowId extends string = string,
+  TColumnId extends string = string,
+  TRowHead extends GridHead<TRowId> = GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId> = GridHead<TColumnId>,
+> = Grid<
+  TCell,
+  TRowId,
+  TColumnId,
+  TRowHead,
+  TColumnHead,
+  GridStateCell<TCell, TRowId, TColumnId>,
+  SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>
+>;
+
+export interface CreateSubGridOptions<
+  TCell,
+  TRowId extends string = string,
+  TColumnId extends string = string,
+  TRowHead extends GridHead<TRowId> = GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId> = GridHead<TColumnId>,
+> {
+  cells?: readonly GridStateCell<TCell, TRowId, TColumnId>[];
+  persist?: GridPersistOption<
+    SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>
+  >;
+}
+
 export interface GridAxisIds<TRowId extends string, TColumnId extends string> {
   rows: readonly TRowId[];
   cols: readonly TColumnId[];

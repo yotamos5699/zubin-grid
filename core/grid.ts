@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 import { cell } from "./cell.js";
-import { createGridPersistController } from "./gridPersist.js";
+import { createGridPersistController, defaultGridPersistAdapter } from "./gridPersist.js";
 
-import type { Cell, Subscriber, Updater } from "./cell.types.js";
+import type { Cell, Subscriber, Updater } from "./types/cell.types.js";
 import type {
+  CreateSubGridOptions,
   Grid,
   GridAxisIds,
   GridInitialCellEntry,
@@ -29,8 +30,10 @@ import type {
   SchemaRowHead,
   SchemaRowId,
   SchemaSnapshot,
+  SubGrid,
+  SubGridState,
   UseGridOptions,
-} from "./grid.types.js";
+} from "./types/grid.types.js";
 
 import {
   assertHeadId,
@@ -41,10 +44,11 @@ import {
 } from "./head.js";
 import { createTailCellMap, getTailCell, setTailCellResult } from "./tail.js";
 
-import type { GridHead } from "./head.types.js";
-import type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./tail.types.js";
+import type { GridHead } from "./types/head.types.js";
+import type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./types/tail.types.js";
 
 export type {
+  CreateSubGridOptions,
   Grid,
   GridAxisIds,
   GridPersistAdapter,
@@ -62,8 +66,10 @@ export type {
   GridUpdateSource,
   GridUpdateType,
   GridUpsertHead,
+  SubGrid,
+  SubGridState,
   UseGridOptions,
-} from "./grid.types.js";
+} from "./types/grid.types.js";
 
 type BroadSchemaRowHead<TState extends GridState<GridRecord, GridRecord, GridRecord>> =
   SchemaRow<TState> & GridHead<string>;
@@ -81,6 +87,50 @@ type BroadSchemaSnapshot<TState extends GridState<GridRecord, GridRecord, GridRe
 type InternalGridCellSetter<TCell, TRowId extends string, TColumnId extends string> = {
   __setCellValue: (rowId: TRowId, columnId: TColumnId, newValue: TCell) => void;
 };
+
+type AnyGrid = Grid<any, any, any, any, any, any, any>;
+
+type GridRowIdOf<TGrid extends AnyGrid> =
+  TGrid extends Grid<any, infer TRowId, any, any, any, any, any>
+    ? Extract<TRowId, string>
+    : never;
+
+type GridColumnIdOf<TGrid extends AnyGrid> =
+  TGrid extends Grid<any, any, infer TColumnId, any, any, any, any>
+    ? Extract<TColumnId, string>
+    : never;
+
+type GridRowHeadOf<TGrid extends AnyGrid> =
+  TGrid extends Grid<any, any, any, infer TRowHead, any, any, any> ? TRowHead : never;
+
+type GridColumnHeadOf<TGrid extends AnyGrid> =
+  TGrid extends Grid<any, any, any, any, infer TColumnHead, any, any>
+    ? TColumnHead
+    : never;
+
+type ParentSubGridState<TCell, TParentGrid extends AnyGrid> = SubGridState<
+  TCell,
+  GridRowIdOf<TParentGrid>,
+  GridColumnIdOf<TParentGrid>,
+  GridRowHeadOf<TParentGrid>,
+  GridColumnHeadOf<TParentGrid>
+>;
+
+type ParentSubGrid<TCell, TParentGrid extends AnyGrid> = SubGrid<
+  TCell,
+  GridRowIdOf<TParentGrid>,
+  GridColumnIdOf<TParentGrid>,
+  GridRowHeadOf<TParentGrid>,
+  GridColumnHeadOf<TParentGrid>
+>;
+
+type ParentSubGridOptions<TCell, TParentGrid extends AnyGrid> = CreateSubGridOptions<
+  TCell,
+  GridRowIdOf<TParentGrid>,
+  GridColumnIdOf<TParentGrid>,
+  GridRowHeadOf<TParentGrid>,
+  GridColumnHeadOf<TParentGrid>
+>;
 
 export function grid<TState extends GridState<GridRecord, GridRecord, GridRecord>>(
   source: GridStateInitializer<TState>,
@@ -158,6 +208,263 @@ export function grid(input: unknown, options: unknown) {
     stateAdapter,
     schemaOptions.persist as GridPersistOption<any> | undefined,
   );
+}
+
+export function createSubGrid<TCell, TParentGrid extends AnyGrid = AnyGrid>(
+  parentGrid: TParentGrid,
+): ParentSubGrid<TCell, TParentGrid>;
+export function createSubGrid<TCell, TParentGrid extends AnyGrid = AnyGrid>(
+  parentGrid: TParentGrid,
+  initialCells: readonly GridStateCell<
+    TCell,
+    GridRowIdOf<TParentGrid>,
+    GridColumnIdOf<TParentGrid>
+  >[],
+  persist?: GridPersistOption<ParentSubGridState<TCell, TParentGrid>>,
+): ParentSubGrid<TCell, TParentGrid>;
+export function createSubGrid<TCell, TParentGrid extends AnyGrid = AnyGrid>(
+  parentGrid: TParentGrid,
+  persist: GridPersistOption<ParentSubGridState<TCell, TParentGrid>>,
+): ParentSubGrid<TCell, TParentGrid>;
+export function createSubGrid<TCell, TParentGrid extends AnyGrid = AnyGrid>(
+  parentGrid: TParentGrid,
+  options: ParentSubGridOptions<TCell, TParentGrid>,
+): ParentSubGrid<TCell, TParentGrid>;
+export function createSubGrid<
+  TCell,
+  TParentCell = unknown,
+  TRowId extends string = string,
+  TColumnId extends string = string,
+  TRowHead extends GridHead<TRowId> = GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId> = GridHead<TColumnId>,
+  TParentStateCell = GridStateCell<TParentCell, TRowId, TColumnId>,
+  TParentState extends GridState<TParentStateCell, TRowHead, TColumnHead> = GridState<
+    TParentStateCell,
+    TRowHead,
+    TColumnHead
+  >,
+>(
+  parentGrid: Grid<
+    TParentCell,
+    TRowId,
+    TColumnId,
+    TRowHead,
+    TColumnHead,
+    TParentStateCell,
+    TParentState
+  >,
+  cellsOrOptionsOrPersist?:
+    | readonly GridStateCell<TCell, TRowId, TColumnId>[]
+    | GridPersistOption<SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>>
+    | CreateSubGridOptions<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+  persist?: GridPersistOption<
+    SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>
+  >,
+): SubGrid<TCell, TRowId, TColumnId, TRowHead, TColumnHead> {
+  const { initialCells, persistOption } = resolveCreateSubGridArgs(
+    cellsOrOptionsOrPersist,
+    persist,
+  );
+  const parentState = parentGrid.getState();
+  const stateAdapter = createGridStateCellAdapter<TCell, TRowId, TColumnId>();
+  const resolvedInitialCells = assertGridStateCellsWithinAxes(
+    initialCells,
+    parentState.rows,
+    parentState.columns,
+    "Sub grid cells",
+  );
+  const subGridStore = createGridStore<
+    TCell,
+    TRowId,
+    TColumnId,
+    TRowHead,
+    TColumnHead,
+    GridStateCell<TCell, TRowId, TColumnId>,
+    SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>
+  >(
+    parentState.rows,
+    parentState.columns,
+    createGridInitialCellsFromState(resolvedInitialCells, stateAdapter),
+    stateAdapter,
+    createSubGridPersistOption(parentGrid, persistOption),
+  );
+
+  const getSubGridState = () => {
+    const nextParentState = parentGrid.getState();
+
+    return createSubGridState(
+      nextParentState.rows,
+      nextParentState.columns,
+      subGridStore.getState().cells,
+    );
+  };
+
+  const syncAxesFromParent = () => {
+    const nextParentState = parentGrid.getState();
+    const currentSubGridState = subGridStore.getState();
+    const nextCells = filterGridStateCellsToAxes(
+      currentSubGridState.cells,
+      nextParentState.rows,
+      nextParentState.columns,
+    );
+
+    if (
+      haveSameHeadSnapshots(currentSubGridState.rows, nextParentState.rows) &&
+      haveSameHeadSnapshots(currentSubGridState.columns, nextParentState.columns) &&
+      nextCells.length === currentSubGridState.cells.length
+    ) {
+      return;
+    }
+
+    subGridStore.setGrid(
+      {
+        rows: nextParentState.rows,
+        columns: nextParentState.columns,
+        cells: nextCells,
+      },
+      "replace",
+    );
+  };
+
+  void parentGrid.subscribeGrid((_currentParentGrid, diff) => {
+    if (diff.type === "row-head" && diff.rows?.length) {
+      diff.rows.forEach((rowHead) => {
+        subGridStore.updateRowHead(rowHead.id, rowHead);
+      });
+
+      return;
+    }
+
+    if (diff.type === "column-head" && diff.columns?.length) {
+      diff.columns.forEach((columnHead) => {
+        subGridStore.updateColumnHead(columnHead.id, columnHead);
+      });
+
+      return;
+    }
+
+    if (diff.type === "rows" && diff.rows?.length) {
+      subGridStore.upsertRows(diff.rows);
+      return;
+    }
+
+    if (diff.type === "columns" && diff.columns?.length) {
+      subGridStore.upsertColumns(diff.columns);
+      return;
+    }
+
+    if (diff.type === "grid" && didGridDiffAffectAxes(diff)) {
+      syncAxesFromParent();
+    }
+  });
+
+  const subGridApi = Object.create(subGridStore) as SubGrid<
+    TCell,
+    TRowId,
+    TColumnId,
+    TRowHead,
+    TColumnHead
+  > &
+    InternalGridCellSetter<TCell, TRowId, TColumnId>;
+
+  Object.defineProperties(subGridApi, {
+    rowHeaders: {
+      enumerable: true,
+      configurable: true,
+      get: () => parentGrid.rowHeaders,
+    },
+    colHeaders: {
+      enumerable: true,
+      configurable: true,
+      get: () => parentGrid.colHeaders,
+    },
+  });
+
+  subGridApi.getState = getSubGridState;
+  subGridApi.getRowHead = (rowId) => parentGrid.getRowHead(rowId);
+  subGridApi.getColumnHead = (columnId) => parentGrid.getColumnHead(columnId);
+  subGridApi.updateRowHead = (rowId, nextRowHead) => {
+    parentGrid.updateRowHead(rowId, nextRowHead);
+  };
+  subGridApi.updateColumnHead = (columnId, nextColumnHead) => {
+    parentGrid.updateColumnHead(columnId, nextColumnHead);
+  };
+  subGridApi.upsertRow = (nextRowHead) => {
+    parentGrid.upsertRow(nextRowHead);
+  };
+  subGridApi.upsertRows = (nextRowHeads) => {
+    parentGrid.upsertRows(nextRowHeads);
+  };
+  subGridApi.upsertColumn = (nextColumnHead) => {
+    parentGrid.upsertColumn(nextColumnHead);
+  };
+  subGridApi.upsertColumns = (nextColumnHeads) => {
+    parentGrid.upsertColumns(nextColumnHeads);
+  };
+  subGridApi.subscribeRowHead = (rowId, callback) =>
+    parentGrid.subscribeRowHead(rowId, callback);
+  subGridApi.subscribeColumnHead = (columnId, callback) =>
+    parentGrid.subscribeColumnHead(columnId, callback);
+  subGridApi.setGrid = (nextState, mode = "replace") => {
+    const patch = normalizeGridStatePatchInput(nextState);
+    const currentParentState = parentGrid.getState();
+
+    if (mode === "update") {
+      if (patch.rows?.length) {
+        parentGrid.upsertRows(patch.rows);
+      }
+
+      if (patch.columns?.length) {
+        parentGrid.upsertColumns(patch.columns);
+      }
+
+      if (patch.cells?.length) {
+        subGridStore.setGrid(
+          {
+            rows: currentParentState.rows,
+            columns: currentParentState.columns,
+            cells: assertGridStateCellsWithinAxes(
+              patch.cells,
+              currentParentState.rows,
+              currentParentState.columns,
+              "Sub grid cells",
+            ),
+          },
+          "update",
+        );
+      }
+
+      return;
+    }
+
+    if (
+      (patch.rows && !haveSameHeadSnapshots(patch.rows, currentParentState.rows)) ||
+      (patch.columns && !haveSameHeadSnapshots(patch.columns, currentParentState.columns))
+    ) {
+      throw new Error(
+        "Sub grids inherit rows and columns from their parent. Replace parent dimensions on the parent grid instead.",
+      );
+    }
+
+    subGridStore.setGrid(
+      {
+        rows: currentParentState.rows,
+        columns: currentParentState.columns,
+        cells: assertGridStateCellsWithinAxes(
+          patch.cells ?? [],
+          currentParentState.rows,
+          currentParentState.columns,
+          "Sub grid cells",
+        ),
+      },
+      "replace",
+    );
+  };
+  subGridApi.clearGrid = () => {
+    subGridStore.clearCells();
+  };
+
+  return subGridApi;
 }
 
 function createGridStore<
@@ -1662,4 +1969,336 @@ function readGridHeadLabel(head: GridRecord, id: string) {
   }
 
   return id;
+}
+
+function resolveCreateSubGridArgs<
+  TCell,
+  TRowId extends string,
+  TColumnId extends string,
+  TRowHead extends GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId>,
+>(
+  cellsOrOptionsOrPersist:
+    | readonly GridStateCell<TCell, TRowId, TColumnId>[]
+    | GridPersistOption<SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>>
+    | CreateSubGridOptions<TCell, TRowId, TColumnId, TRowHead, TColumnHead>
+    | undefined,
+  persist:
+    | GridPersistOption<SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>>
+    | undefined,
+): {
+  initialCells: readonly GridStateCell<TCell, TRowId, TColumnId>[];
+  persistOption:
+    | GridPersistOption<SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>>
+    | undefined;
+} {
+  if (persist) {
+    return {
+      initialCells: readCreateSubGridCells(cellsOrOptionsOrPersist),
+      persistOption: persist,
+    };
+  }
+
+  if (!cellsOrOptionsOrPersist) {
+    return {
+      initialCells: [] as readonly GridStateCell<TCell, TRowId, TColumnId>[],
+      persistOption: undefined,
+    };
+  }
+
+  if (isCreateSubGridOptions(cellsOrOptionsOrPersist)) {
+    const subGridOptions = cellsOrOptionsOrPersist as CreateSubGridOptions<
+      TCell,
+      TRowId,
+      TColumnId,
+      TRowHead,
+      TColumnHead
+    >;
+
+    return {
+      initialCells: subGridOptions.cells ?? [],
+      persistOption: subGridOptions.persist,
+    };
+  }
+
+  if (isGridPersistOption(cellsOrOptionsOrPersist)) {
+    return {
+      initialCells: [] as readonly GridStateCell<TCell, TRowId, TColumnId>[],
+      persistOption: cellsOrOptionsOrPersist as GridPersistOption<
+        SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>
+      >,
+    };
+  }
+
+  return {
+    initialCells: cellsOrOptionsOrPersist as readonly GridStateCell<
+      TCell,
+      TRowId,
+      TColumnId
+    >[],
+    persistOption: undefined,
+  };
+}
+
+function readCreateSubGridCells<
+  TCell,
+  TRowId extends string,
+  TColumnId extends string,
+  TRowHead extends GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId>,
+>(
+  value:
+    | readonly GridStateCell<TCell, TRowId, TColumnId>[]
+    | GridPersistOption<SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>>
+    | CreateSubGridOptions<TCell, TRowId, TColumnId, TRowHead, TColumnHead>
+    | undefined,
+): readonly GridStateCell<TCell, TRowId, TColumnId>[] {
+  if (!value || isGridPersistOption(value)) {
+    return [] as readonly GridStateCell<TCell, TRowId, TColumnId>[];
+  }
+
+  if (isCreateSubGridOptions(value)) {
+    return (
+      (value as CreateSubGridOptions<TCell, TRowId, TColumnId, TRowHead, TColumnHead>)
+        .cells ?? []
+    );
+  }
+
+  return value as readonly GridStateCell<TCell, TRowId, TColumnId>[];
+}
+
+function isCreateSubGridOptions(
+  value: unknown,
+): value is CreateSubGridOptions<any, any, any> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isGridPersistOption<TState>(value: unknown): value is GridPersistOption<TState> {
+  return Array.isArray(value) && value.length > 0 && typeof value[0] === "string";
+}
+
+function createGridStateCellAdapter<
+  TCell,
+  TRowId extends string,
+  TColumnId extends string,
+>(): GridStateAdapter<TCell, TRowId, TColumnId, GridStateCell<TCell, TRowId, TColumnId>> {
+  return {
+    deserializeCell: (stateCell) => ({
+      rowId: stateCell.rowId,
+      columnId: stateCell.columnId,
+      value: stateCell.value,
+    }),
+    serializeCell: (rowId, columnId, value) => ({
+      rowId,
+      columnId,
+      value,
+    }),
+  };
+}
+
+function createSubGridPersistOption<
+  TCell,
+  TParentCell,
+  TRowId extends string,
+  TColumnId extends string,
+  TRowHead extends GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId>,
+  TParentStateCell,
+  TParentState extends GridState<TParentStateCell, TRowHead, TColumnHead>,
+>(
+  parentGrid: Grid<
+    TParentCell,
+    TRowId,
+    TColumnId,
+    TRowHead,
+    TColumnHead,
+    TParentStateCell,
+    TParentState
+  >,
+  persist:
+    | GridPersistOption<SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>>
+    | undefined,
+):
+  | GridPersistOption<SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>>
+  | undefined {
+  if (!persist) {
+    return undefined;
+  }
+
+  const [storageKey, adapter] = persist;
+  const resolvedAdapter =
+    adapter ??
+    (defaultGridPersistAdapter as {
+      get: (
+        storageKey: string,
+      ) =>
+        | SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>
+        | null
+        | Promise<SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead> | null>;
+      set: (
+        storageKey: string,
+        value: SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead>,
+      ) => void | Promise<void>;
+      remove: (storageKey: string) => void | Promise<void>;
+    });
+
+  return [
+    storageKey,
+    {
+      get: async (nextStorageKey) => {
+        const persistedState = await Promise.resolve(resolvedAdapter.get(nextStorageKey));
+
+        if (persistedState === null) {
+          return null;
+        }
+
+        try {
+          const normalizedState = normalizeGridStateInput(persistedState);
+          const parentState = parentGrid.getState();
+
+          return createSubGridState(
+            parentState.rows,
+            parentState.columns,
+            normalizedState.cells,
+          );
+        } catch {
+          return null;
+        }
+      },
+      set: (nextStorageKey, nextState) => {
+        const parentState = parentGrid.getState();
+
+        return resolvedAdapter.set(
+          nextStorageKey,
+          createSubGridState(parentState.rows, parentState.columns, nextState.cells),
+        );
+      },
+      remove: (nextStorageKey) => resolvedAdapter.remove(nextStorageKey),
+    },
+  ];
+}
+
+function createSubGridState<
+  TCell,
+  TRowId extends string,
+  TColumnId extends string,
+  TRowHead extends GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId>,
+>(
+  rows: readonly TRowHead[],
+  columns: readonly TColumnHead[],
+  cells: readonly GridStateCell<TCell, TRowId, TColumnId>[],
+): SubGridState<TCell, TRowId, TColumnId, TRowHead, TColumnHead> {
+  return {
+    rows,
+    columns,
+    cells: filterGridStateCellsToAxes(cells, rows, columns),
+  };
+}
+
+function assertGridStateCellsWithinAxes<
+  TCell,
+  TRowId extends string,
+  TColumnId extends string,
+>(
+  cells: readonly GridStateCell<TCell, TRowId, TColumnId>[],
+  rows: readonly GridHead<TRowId>[],
+  columns: readonly GridHead<TColumnId>[],
+  contextLabel: string,
+) {
+  const rowIds = new Set(rows.map((rowHead) => rowHead.id));
+  const columnIds = new Set(columns.map((columnHead) => columnHead.id));
+
+  cells.forEach((currentCell) => {
+    if (!rowIds.has(currentCell.rowId)) {
+      throw new Error(
+        `${contextLabel} must reference an existing parent row header. Missing row "${currentCell.rowId}".`,
+      );
+    }
+
+    if (!columnIds.has(currentCell.columnId)) {
+      throw new Error(
+        `${contextLabel} must reference an existing parent column header. Missing column "${currentCell.columnId}".`,
+      );
+    }
+  });
+
+  return cells;
+}
+
+function filterGridStateCellsToAxes<
+  TCell,
+  TRowId extends string,
+  TColumnId extends string,
+>(
+  cells: readonly GridStateCell<TCell, TRowId, TColumnId>[],
+  rows: readonly GridHead<TRowId>[],
+  columns: readonly GridHead<TColumnId>[],
+) {
+  const rowIds = new Set(rows.map((rowHead) => rowHead.id));
+  const columnIds = new Set(columns.map((columnHead) => columnHead.id));
+
+  return cells.filter(
+    (currentCell) => rowIds.has(currentCell.rowId) && columnIds.has(currentCell.columnId),
+  );
+}
+
+function didGridDiffAffectAxes<
+  TRowId extends string,
+  TColumnId extends string,
+  TRowHead extends GridHead<TRowId>,
+  TColumnHead extends GridHead<TColumnId>,
+  TStateCell,
+>(diff: GridUpdateDiff<TRowId, TColumnId, TRowHead, TColumnHead, TStateCell>) {
+  return (
+    !haveSameHeadSnapshots(diff.rows, diff.previousRows) ||
+    !haveSameHeadSnapshots(diff.columns, diff.previousColumns)
+  );
+}
+
+function haveSameHeadSnapshots<
+  TId extends string,
+  THead extends GridHead<TId> | undefined,
+>(leftHeads: readonly THead[] | undefined, rightHeads: readonly THead[] | undefined) {
+  if (leftHeads === rightHeads) {
+    return true;
+  }
+
+  if (!leftHeads || !rightHeads || leftHeads.length !== rightHeads.length) {
+    return false;
+  }
+
+  return leftHeads.every((leftHead, index) => {
+    const rightHead = rightHeads[index];
+
+    if (leftHead === undefined || rightHead === undefined) {
+      return leftHead === rightHead;
+    }
+
+    return haveSameShallowRecord(
+      leftHead as unknown as GridRecord,
+      rightHead as unknown as GridRecord,
+    );
+  });
+}
+
+function haveSameShallowRecord(leftRecord: GridRecord, rightRecord: GridRecord) {
+  if (Object.is(leftRecord, rightRecord)) {
+    return true;
+  }
+
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+
+  return leftKeys.every((key) => {
+    if (!(key in rightRecord)) {
+      return false;
+    }
+
+    return Object.is(leftRecord[key], rightRecord[key]);
+  });
 }
