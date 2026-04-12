@@ -44,9 +44,9 @@ Create a grid from JSON-friendly row, column, and cell records:
 import { grid } from 'zubin-grid'
 
 type SalesSchema = {
-  rows: Array<{ id: string; label: string }>
-  columns: Array<{ id: string; label: string }>
-  cells: Array<{ rowId: string; columnId: string; value: number }>
+  rows: { id: string; label: string }[]
+  columns: { id: string; label: string }[]
+  cells: { rowId: string; columnId: string; value: number }[]
 }
 
 const initialState: SalesSchema = {
@@ -86,13 +86,13 @@ type BudgetRowId = 'marketing' | 'ops'
 type BudgetColumnId = 'planned' | 'actual'
 
 type BudgetSchema = {
-  rows: Array<{ id: BudgetRowId; label: string }>
-  columns: Array<{ id: BudgetColumnId; label: string }>
-  cells: Array<{
+  rows: { id: BudgetRowId; label: string }[]
+  columns: { id: BudgetColumnId; label: string }[]
+  cells: {
     rowId: BudgetRowId
     columnId: BudgetColumnId
     value: number
-  }>
+  }[]
 }
 
 const budgetGrid = grid<BudgetSchema>(
@@ -250,13 +250,15 @@ salesGrid.clearGrid()
 
 If your data already exists as JSON-like records, you can create the grid from a single schema object.
 
+`grid` only accepts this schema-based initializer form now.
+
 ```ts
 import { grid } from 'zubin-grid'
 
 type SalesSchema = {
-  rows: Array<{ id: string; label: string }>
-  columns: Array<{ id: string; label: string }>
-  cells: Array<{ rowId: string; columnId: string; value: number }>
+  rows: { id: string; label: string }[]
+  columns: { id: string; label: string }[]
+  cells: { rowId: string; columnId: string; value: number }[]
 }
 
 const initialState: SalesSchema = {

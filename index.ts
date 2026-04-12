@@ -5,7 +5,6 @@ export { createGridKey, grid, useGrid } from "./core/grid.js";
 export type {
   Grid,
   GridAxisIds,
-  GridOptions,
   GridPersistAdapter,
   GridPersistOption,
   GridPosition,

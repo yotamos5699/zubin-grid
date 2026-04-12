@@ -8,8 +8,6 @@ import type {
   Grid,
   GridAxisIds,
   GridInitialCellEntry,
-  GridMatrixSnapshot,
-  GridOptions,
   GridPersistOption,
   GridPosition,
   GridRecord,
@@ -40,22 +38,15 @@ import {
   createHeadOrderIndex,
   getHeadCell,
   getOrderedHeads,
-  normalizeGridHeads,
 } from "./head.js";
 import { createTailCellMap, getTailCell, setTailCellResult } from "./tail.js";
 
-import type {
-  GridHead,
-  GridHeadId,
-  GridHeadInput,
-  ResolvedGridHead,
-} from "./head.types.js";
+import type { GridHead } from "./head.types.js";
 import type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./tail.types.js";
 
 export type {
   Grid,
   GridAxisIds,
-  GridOptions,
   GridPersistAdapter,
   GridPersistOption,
   GridPosition,
@@ -90,27 +81,6 @@ type BroadSchemaSnapshot<TState extends GridState<GridRecord, GridRecord, GridRe
 type InternalGridCellSetter<TCell, TRowId extends string, TColumnId extends string> = {
   __setCellValue: (rowId: TRowId, columnId: TColumnId, newValue: TCell) => void;
 };
-
-export function grid<
-  TCell,
-  TRowHeadInput extends GridHeadInput,
-  TColumnHeadInput extends GridHeadInput,
->(
-  cells: Cell<TCell>[][],
-  options: GridOptions<
-    TRowHeadInput,
-    TColumnHeadInput,
-    GridMatrixSnapshot<TCell, TRowHeadInput, TColumnHeadInput>
-  >,
-): Grid<
-  TCell,
-  GridHeadId<TRowHeadInput>,
-  GridHeadId<TColumnHeadInput>,
-  ResolvedGridHead<TRowHeadInput>,
-  ResolvedGridHead<TColumnHeadInput>,
-  GridStateCell<TCell, GridHeadId<TRowHeadInput>, GridHeadId<TColumnHeadInput>>,
-  GridMatrixSnapshot<TCell, TRowHeadInput, TColumnHeadInput>
->;
 
 export function grid<TState extends GridState<GridRecord, GridRecord, GridRecord>>(
   source: GridStateInitializer<TState>,
@@ -159,25 +129,6 @@ export function grid<
 >;
 
 export function grid(input: unknown, options: unknown) {
-  if (Array.isArray(input)) {
-    const matrixOptions = options as GridOptions<GridHeadInput, GridHeadInput, any>;
-    const { rowHeaders, colHeaders, persist } = matrixOptions;
-    const normalizedRowHeads = normalizeGridHeads(rowHeaders);
-    const normalizedColumnHeads = normalizeGridHeads(colHeaders);
-
-    return createGridStore(
-      normalizedRowHeads,
-      normalizedColumnHeads,
-      createMatrixInitialCells(
-        input as Cell<unknown>[][],
-        normalizedRowHeads,
-        normalizedColumnHeads,
-      ),
-      createMatrixStateAdapter<unknown, string, string>(),
-      persist as GridPersistOption<any> | undefined,
-    );
-  }
-
   const schemaOptions = options as GridSchemaOptions<
     GridState<GridRecord, GridRecord, GridRecord>,
     string,
@@ -1560,34 +1511,6 @@ function normalizeRecordHeads<
   });
 }
 
-function createMatrixInitialCells<TCell, TRowId extends string, TColumnId extends string>(
-  cells: Cell<TCell>[][],
-  rowHeads: readonly GridHead<TRowId>[],
-  columnHeads: readonly GridHead<TColumnId>[],
-) {
-  if (cells.length !== rowHeads.length) {
-    throw new Error(
-      `Grid row count mismatch: received ${cells.length} rows for ${rowHeads.length} row headers.`,
-    );
-  }
-
-  return cells.flatMap((row, rowIndex) => {
-    const rowId = rowHeads[rowIndex].id;
-
-    if (row.length !== columnHeads.length) {
-      throw new Error(
-        `Grid column count mismatch on row ${rowIndex}: received ${row.length} cells for ${columnHeads.length} column headers.`,
-      );
-    }
-
-    return row.map((currentCell, columnIndex) => ({
-      rowId,
-      columnId: columnHeads[columnIndex].id,
-      cell: currentCell,
-    }));
-  });
-}
-
 function createGridInitialCellsFromState<
   TCell,
   TRowId extends string,
@@ -1617,25 +1540,6 @@ function createGridInitialCellsFromState<
   });
 
   return initialCells;
-}
-
-function createMatrixStateAdapter<
-  TCell,
-  TRowId extends string,
-  TColumnId extends string,
->(): GridStateAdapter<TCell, TRowId, TColumnId, GridStateCell<TCell, TRowId, TColumnId>> {
-  return {
-    deserializeCell: (stateCell) => ({
-      rowId: stateCell.rowId,
-      columnId: stateCell.columnId,
-      value: stateCell.value,
-    }),
-    serializeCell: (rowId, columnId, value) => ({
-      rowId,
-      columnId,
-      value,
-    }),
-  };
 }
 
 function createSchemaStateAdapter<

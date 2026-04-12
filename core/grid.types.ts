@@ -1,10 +1,5 @@
 import type { Cell, Subscriber, Updater } from "./cell.types.js";
-import type {
-  GridHead,
-  GridHeadId,
-  GridHeadInput,
-  ResolvedGridHead,
-} from "./head.types.js";
+import type { GridHead } from "./head.types.js";
 import type { GridAxisCell, GridAxisTailUpdater, GridTailState } from "./tail.types.js";
 
 export type { GridPersistAdapter, GridPersistOption } from "./gridPersist.types.js";
@@ -74,16 +69,6 @@ export type GridStateInitializer<TState> =
   | TState
   | Partial<TState>
   | (() => TState | Partial<TState>);
-
-export interface GridOptions<
-  TRowHeadInput extends GridHeadInput,
-  TColumnHeadInput extends GridHeadInput,
-  TPersistState = unknown,
-> {
-  rowHeaders: readonly TRowHeadInput[];
-  colHeaders: readonly TColumnHeadInput[];
-  persist?: GridPersistOption<TPersistState>;
-}
 
 export type GridPosition<
   TColumnId extends string = string,
@@ -255,16 +240,6 @@ export interface UseGridOptions<
     TState
   >;
 }
-
-export type GridMatrixSnapshot<
-  TCell,
-  TRowHeadInput extends GridHeadInput,
-  TColumnHeadInput extends GridHeadInput,
-> = GridState<
-  GridStateCell<TCell, GridHeadId<TRowHeadInput>, GridHeadId<TColumnHeadInput>>,
-  ResolvedGridHead<TRowHeadInput>,
-  ResolvedGridHead<TColumnHeadInput>
->;
 
 export type SchemaRowId<
   TState extends GridState<GridRecord, GridRecord, GridRecord>,
